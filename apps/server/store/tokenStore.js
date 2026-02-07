@@ -16,7 +16,7 @@ function loadToken(type) {
 }
 function clearToken(type) {
   const file =
-    type === "source" ? sourceFile : destinationFile;
+    type === "source" ? sourceFile : destFile;
 
   if (fs.existsSync(file)) {
     fs.unlinkSync(file);

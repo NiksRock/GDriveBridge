@@ -38,6 +38,7 @@ router.get("/me/:type", async (req, res) => {
 router.post("/disconnect/:type", (req, res) => {
   const type = req.params.type;
 
+  console.log(type)
   clearToken(type);
 
   res.json({
