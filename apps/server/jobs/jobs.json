@@ -1,0 +1,24 @@
+{
+  "job_1770489670819": {
+    "jobId": "job_1770489670819",
+    "folderId": "1F5L7eYoWISR8-0uOBvyaV-E888VuUP5V",
+    "totalFiles": 1,
+    "completed": 0,
+    "failed": [
+      "abc"
+    ],
+    "status": "completed",
+    "startedAt": "2026-02-07T18:41:10.821Z",
+    "finishedAt": "2026-02-07T18:41:12.573Z"
+  },
+  "job_1770489734417": {
+    "jobId": "job_1770489734417",
+    "folderId": "1F5L7eYoWISR8-0uOBvyaV-E888VuUP5V",
+    "totalFiles": 1,
+    "completed": 1,
+    "failed": [],
+    "status": "completed",
+    "startedAt": "2026-02-07T18:42:14.417Z",
+    "finishedAt": "2026-02-07T18:42:19.228Z"
+  }
+}
