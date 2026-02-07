@@ -3,6 +3,7 @@ const router = express.Router();
 const { listSourceFolders, listFilesInSourceFolder } = require("./driveService");
 const jobStore = require("../store/jobStore");
 const { runTransferJob } = require("./transferJob");
+const { loadToken } = require("../store/tokenStore");
 
 
 /**
@@ -122,5 +123,72 @@ router.get("/transfer/status/:jobId", (req, res) => {
     job,
   });
 });
+// ✅ JSON Folder List for React Dashboard
+router.get("/source/folders/json", async (req, res) => {
+  const tokens = loadToken("source");
+
+  if (!tokens) {
+    return res.status(401).json({
+      success: false,
+      error: "Source not authenticated",
+    });
+  }
+
+  const folders = await listSourceFolders(tokens);
+
+  res.json({
+    success: true,
+    folders,
+  });
+});
+// ✅ Job Status API for Frontend Progress UI
+router.get("/job/:jobId", (req, res) => {
+  const jobId = req.params.jobId;
+
+  const job = jobStore.getJob(jobId);
+
+  if (!job) {
+    return res.status(404).json({
+      success: false,
+      error: "Job not found",
+    });
+  }
+
+  res.json({
+    success: true,
+    job,
+  });
+});
+
+// ✅ Bulk Transfer Start
+router.post("/transfer/bulk", async (req, res) => {
+  const { folderIds, deleteSource } = req.body;
+
+  if (!folderIds || folderIds.length === 0) {
+    return res.status(400).json({
+      success: false,
+      error: "No folders selected",
+    });
+  }
+
+  const jobs = [];
+
+  for (let folderId of folderIds) {
+    const files = await listFolderChildren(folderId);
+
+    const jobId = jobStore.createJob(folderId, files.length);
+
+    runTransferJob(jobId, folderId, deleteSource);
+
+    jobs.push(jobId);
+  }
+
+  res.json({
+    success: true,
+    message: "Bulk transfer started",
+    jobs,
+  });
+});
+
 
 module.exports = router;

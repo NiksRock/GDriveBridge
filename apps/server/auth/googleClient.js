@@ -12,6 +12,14 @@ function createOAuthClient(redirectUri) {
   );
 }
 
-const SCOPES = ["https://www.googleapis.com/auth/drive"];
+const SCOPES = [
+  "https://www.googleapis.com/auth/drive",
+
+  // ✅ Needed for profile + email display
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "openid",
+];
+
 
 module.exports = { createOAuthClient, SCOPES };

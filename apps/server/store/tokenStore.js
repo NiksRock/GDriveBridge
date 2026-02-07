@@ -14,5 +14,13 @@ function loadToken(type) {
   if (!fs.existsSync(file)) return null;
   return JSON.parse(fs.readFileSync(file));
 }
+function clearToken(type) {
+  const file =
+    type === "source" ? sourceFile : destinationFile;
 
-module.exports = { saveToken, loadToken };
+  if (fs.existsSync(file)) {
+    fs.unlinkSync(file);
+  }
+}
+
+module.exports = { saveToken, loadToken,clearToken };

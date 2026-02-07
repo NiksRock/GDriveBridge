@@ -15,11 +15,16 @@ async function listSourceFolders() {
 
   const drive = createDriveClient(tokens, redirectUri);
 
+
   const res = await drive.files.list({
-    q: "mimeType='application/vnd.google-apps.folder' and trashed=false",
+    q: `
+      mimeType='application/vnd.google-apps.folder'
+      and 'root' in parents
+      and trashed=false
+      and 'me' in owners
+    `,
     fields: "files(id, name)",
   });
-
   return res.data.files;
 }
 /**
