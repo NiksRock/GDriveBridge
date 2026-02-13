@@ -1,0 +1,111 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+
+  accounts  GoogleAccount[]
+  transfers Transfer[]
+}
+
+model GoogleAccount {
+  id           String   @id @default(uuid())
+  userId       String
+
+  email        String
+  avatarUrl    String?
+
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model Transfer {
+  id                   String   @id @default(uuid())
+  userId               String
+
+  sourceAccountId      String
+  destinationAccountId String
+
+  destinationFolderId  String
+
+  mode                 TransferMode @default(copy)
+  status               TransferStatus @default(pending)
+
+  totalItems           Int      @default(0)
+  completedItems       Int      @default(0)
+  failedItems          Int      @default(0)
+
+  createdAt            DateTime @default(now())
+  startedAt            DateTime?
+  finishedAt           DateTime?
+
+  user                 User     @relation(fields: [userId], references: [id])
+  items                TransferItem[]
+  events               TransferEvent[]
+}
+
+model TransferItem {
+  id          String   @id @default(uuid())
+  transferId  String
+
+  googleFileId String
+  fileName     String
+  mimeType     String?
+  sizeBytes    BigInt?
+
+  status       ItemStatus @default(pending)
+  errorMessage String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  transfer     Transfer @relation(fields: [transferId], references: [id])
+}
+
+model TransferEvent {
+  id         String   @id @default(uuid())
+  transferId String
+
+  type       String
+  message    String?
+  metadata   Json?
+
+  createdAt  DateTime @default(now())
+
+  transfer   Transfer @relation(fields: [transferId], references: [id])
+}
+
+enum TransferMode {
+  copy
+  move
+}
+
+enum TransferStatus {
+  pending
+  running
+  paused
+  completed
+  failed
+  cancelled
+}
+
+enum ItemStatus {
+  pending
+  in_progress
+  completed
+  failed
+  skipped
+}

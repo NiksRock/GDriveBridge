@@ -1,0 +1,19 @@
+{
+  "name": "worker",
+  "private": true,
+  "version": "0.0.1",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0"
+  },
+  "dependencies": {
+    "@gdrivebridge/shared": "workspace:*",
+    "@prisma/client": "^6.19.2",
+    "dayjs": "^1.11.19"
+  }
+}

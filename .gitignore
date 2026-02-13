@@ -1,0 +1,21 @@
+# dependencies
+node_modules
+.pnpm-store
+
+# build outputs
+dist
+build
+
+# caches
+.turbo
+.vite
+
+# env
+.env
+
+# logs
+*.log
+
+# temp debug outputs
+structure.txt
+clean-structure.txt
