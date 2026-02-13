@@ -30,10 +30,5 @@
     "*.{ts,tsx,js,jsx,json,md}": [
       "prettier --write"
     ]
-  },
-  "dependencies": {
-    "bullmq": "^5.69.1",
-    "dayjs": "^1.11.19",
-    "ioredis": "5.9.3"
   }
 }

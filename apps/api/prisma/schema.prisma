@@ -23,14 +23,18 @@ model GoogleAccount {
   email        String
   avatarUrl    String?
 
-  accessToken  String
+  accessToken  String?
   refreshToken String
-  expiresAt    DateTime
+  expiresAt    DateTime?
 
   createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  user         User     @relation(fields: [userId], references: [id])
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email])
 }
+
 
 model Transfer {
   id                   String   @id @default(uuid())
@@ -52,7 +56,7 @@ model Transfer {
   startedAt            DateTime?
   finishedAt           DateTime?
 
-  user                 User     @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
   items                TransferItem[]
   events               TransferEvent[]
 }
@@ -72,7 +76,8 @@ model TransferItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  transfer     Transfer @relation(fields: [transferId], references: [id])
+transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
 }
 
 model TransferEvent {

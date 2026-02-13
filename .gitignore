@@ -19,3 +19,5 @@ build
 # temp debug outputs
 structure.txt
 clean-structure.txt
+packages/**/dist
+apps/**/dist

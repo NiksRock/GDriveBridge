@@ -1,6 +1,4 @@
-import type { ConnectionOptions } from 'bullmq';
-
-export const redisConfig: ConnectionOptions = {
+export const redisConfig = {
   host: 'localhost',
   port: 6379,
 };
