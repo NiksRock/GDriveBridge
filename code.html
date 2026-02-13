@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1.0" name="viewport" />
+    <title>GDriveBridge Migration Dashboard</title>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap"
+        rel="stylesheet" />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap"
+        rel="stylesheet" />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#4387f4",
+                        "background-light": "#f8fafc",
+                        "background-dark": "#101722",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.375rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "2xl": "1rem",
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Custom scrollbar for file explorers */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #cbd5e1;
+            border-radius: 20px;
+        }
+
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background-color: #475569;
+        }
+    </style>
+</head>
+
+<body
+    class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen flex flex-col font-display selection:bg-primary/20">
+    <!-- Header -->
+    <header
+        class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-6 py-3 sticky top-0 z-50">
+        <div class="flex items-center gap-3">
+            <div class="size-8 text-primary flex items-center justify-center">
+                <span class="material-symbols-outlined text-3xl">cloud_sync</span>
+            </div>
+            <h1 class="text-xl font-bold tracking-tight text-slate-900 dark:text-white">GDriveBridge</h1>
+        </div>
+        <div class="flex items-center gap-4">
+            <!-- System Status Badge -->
+            <div
+                class="hidden md:flex items-center gap-2 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 rounded-full border border-green-100 dark:border-green-800">
+                <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                <span class="text-xs font-semibold text-green-700 dark:text-green-400">System Operational</span>
+            </div>
+            <div class="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-2"></div>
+            <!-- Dark Mode Toggle (Mock) -->
+            <button
+                class="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 transition-colors">
+                <span class="material-symbols-outlined text-[20px]">dark_mode</span>
+            </button>
+            <!-- User Profile -->
+            <button
+                class="flex items-center gap-2 p-1 pl-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors border border-transparent hover:border-slate-200 dark:hover:border-slate-700">
+                <span class="text-sm font-medium hidden sm:block">Admin User</span>
+                <div
+                    class="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden flex items-center justify-center text-slate-500">
+                    <span class="material-symbols-outlined text-[20px]">person</span>
+                </div>
+            </button>
+        </div>
+    </header>
+    <!-- Main Content -->
+    <main class="flex-1 p-6 max-w-[1600px] mx-auto w-full flex flex-col gap-6">
+        <!-- Connection Cards Section -->
+        <section class="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-4 items-center">
+            <!-- Source Card -->
+            <div
+                class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between group hover:border-primary/50 transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="relative">
+                        <div
+                            class="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-600">
+                            <img alt="User Avatar" class="w-full h-full object-cover" data-alt="John Doe Avatar"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBTGjy5o4lf7MOKu-Og0UJAlg4RZkQ4lIX1e3W4iVzPriAe_HVJVDmDZa4cFcHQSwv8W6h2fsPXiC26gPgODf6eUjGW-wg73d4OeWqR1vL2w36L1N2VTyHCGVwRl8TjTr4UFajt-31HwW26RxZfZUoa9vhqZc4yQaplZ3Qy3MWbjV_t5ilsWXZJBzqGMksbtMBr9RJ8CwzNBI5Qii8Eqh6aDnStFX93KVYXzMKnyQ5utd_AEEzsFmjumK7WPI8Eb7L4aiIsadIavqeK" />
+                        </div>
+                        <div class="absolute -bottom-1 -right-1 bg-white dark:bg-slate-800 rounded-full p-0.5">
+                            <span class="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                        </div>
+                    </div>
+                    <div>
+                        <p
+                            class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-0.5">
+                            Source Account</p>
+                        <h3 class="font-bold text-slate-900 dark:text-white leading-tight">john.doe@gmail.com</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">15GB / 100GB used</p>
+                    </div>
+                </div>
+                <button
+                    class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                    Change
+                </button>
+            </div>
+            <!-- Connector Icon -->
+            <div class="flex justify-center text-slate-300 dark:text-slate-600">
+                <span class="material-symbols-outlined text-3xl md:rotate-0 rotate-90">arrow_forward</span>
+            </div>
+            <!-- Destination Card -->
+            <div
+                class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between group hover:border-primary/50 transition-colors">
+                <div class="flex items-center gap-4">
+                    <div class="relative">
+                        <div
+                            class="w-12 h-12 rounded-full overflow-hidden border-2 border-slate-100 dark:border-slate-600">
+                            <img alt="Company Avatar" class="w-full h-full object-cover" data-alt="Company Work Avatar"
+                                src="https://lh3.googleusercontent.com/aida-public/AB6AXuDi0eUs_lOM7hGbgaPZe1ijDVhkOCV4mu0B83Xwbo24y9lSKGikCzucA0OHbjfBK_lmZynbLdBjuhDTSzPdeLPAFNGAAappZmECGxFNar1wgGoADshmPzNFn30_I6aFk9G-tvXPFMOOHyc1Hb__5_zzUpwgHQQFiMxHgo-H0-XvsEh7IqE9JZvfzpjYFD5IL37PZFmu0q8Ld1S2MSKu5ZVPOakc36TkxNgnx-xheISv6RvIftgUDFlq5KxYi8oCofUr69tGys3sv8wU" />
+                        </div>
+                        <div class="absolute -bottom-1 -right-1 bg-white dark:bg-slate-800 rounded-full p-0.5">
+                            <span class="material-symbols-outlined text-green-500 text-[18px]">check_circle</span>
+                        </div>
+                    </div>
+                    <div>
+                        <p
+                            class="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-0.5">
+                            Destination Account</p>
+                        <h3 class="font-bold text-slate-900 dark:text-white leading-tight">john.work@company.com</h3>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Unlimited Storage</p>
+                    </div>
+                </div>
+                <button
+                    class="text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary px-3 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                    Change
+                </button>
+            </div>
+        </section>
+        <!-- Explorer & Options Container -->
+        <div class="flex flex-col lg:flex-row gap-6 h-[600px] min-h-[500px]">
+            <!-- Left Pane: Source Explorer -->
+            <div
+                class="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden">
+                <div
+                    class="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary text-[20px]">folder_open</span>
+                            Source Drive
+                        </h3>
+                        <span
+                            class="text-xs font-medium bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded text-slate-600 dark:text-slate-300">24
+                            Items</span>
+                    </div>
+                    <div class="relative">
+                        <span
+                            class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-[18px]">search</span>
+                        <input
+                            class="w-full pl-9 pr-4 py-2 text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent outline-none transition-shadow"
+                            placeholder="Search folders..." type="text" />
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                    <div class="space-y-1">
+                        <!-- Header Row -->
+                        <div
+                            class="grid grid-cols-[auto_1fr_auto] gap-3 px-3 py-2 text-xs font-semibold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700/50 mb-1">
+                            <div class="w-5"></div>
+                            <div>Name</div>
+                            <div>Size</div>
+                        </div>
+                        <!-- Item Row: Selected -->
+                        <div
+                            class="group flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-primary/20 border border-blue-100 dark:border-primary/30 cursor-pointer">
+                            <div class="flex items-center justify-center w-5">
+                                <span class="material-symbols-outlined text-primary text-[20px]">check_box</span>
+                            </div>
+                            <div class="flex-1 flex items-center gap-2 min-w-0">
+                                <span class="material-symbols-outlined text-amber-400 text-[20px]">folder</span>
+                                <span class="text-sm font-medium text-slate-900 dark:text-white truncate">Marketing
+                                    Assets 2024</span>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">1.2 GB</span>
+                        </div>
+                        <!-- Item Row -->
+                        <div
+                            class="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent">
+                            <div class="flex items-center justify-center w-5">
+                                <span
+                                    class="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-slate-400 text-[20px]">check_box_outline_blank</span>
+                            </div>
+                            <div class="flex-1 flex items-center gap-2 min-w-0">
+                                <span class="material-symbols-outlined text-slate-400 text-[20px]">folder</span>
+                                <span class="text-sm text-slate-700 dark:text-slate-300 truncate">Q3 Financial
+                                    Reports</span>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">45 MB</span>
+                        </div>
+                        <!-- Item Row -->
+                        <div
+                            class="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent">
+                            <div class="flex items-center justify-center w-5">
+                                <span
+                                    class="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-slate-400 text-[20px]">check_box_outline_blank</span>
+                            </div>
+                            <div class="flex-1 flex items-center gap-2 min-w-0">
+                                <span class="material-symbols-outlined text-slate-400 text-[20px]">folder</span>
+                                <span class="text-sm text-slate-700 dark:text-slate-300 truncate">Design Mockups</span>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">890 MB</span>
+                        </div>
+                        <!-- Item Row: Selected -->
+                        <div
+                            class="group flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-primary/20 border border-blue-100 dark:border-primary/30 cursor-pointer">
+                            <div class="flex items-center justify-center w-5">
+                                <span class="material-symbols-outlined text-primary text-[20px]">check_box</span>
+                            </div>
+                            <div class="flex-1 flex items-center gap-2 min-w-0">
+                                <span class="material-symbols-outlined text-amber-400 text-[20px]">folder</span>
+                                <span class="text-sm font-medium text-slate-900 dark:text-white truncate">Client
+                                    Projects - Archived</span>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">3.4 GB</span>
+                        </div>
+                        <!-- More mock items -->
+                        <div
+                            class="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent opacity-60">
+                            <div class="flex items-center justify-center w-5">
+                                <span
+                                    class="material-symbols-outlined text-slate-300 dark:text-slate-600 text-[20px]">check_box_outline_blank</span>
+                            </div>
+                            <div class="flex-1 flex items-center gap-2 min-w-0">
+                                <span class="material-symbols-outlined text-slate-400 text-[20px]">folder</span>
+                                <span class="text-sm text-slate-700 dark:text-slate-300 truncate">Personal Photos</span>
+                            </div>
+                            <span class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">12 GB</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Middle Action Area (Desktop: Vertical stack, Mobile: Horizontal) -->
+            <div class="flex flex-row lg:flex-col items-center justify-center gap-4">
+                <div
+                    class="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm w-full lg:w-64">
+                    <h4 class="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-3">
+                        Transfer Options</h4>
+                    <div class="space-y-3">
+                        <label class="flex items-start gap-3 cursor-pointer group">
+                            <div class="relative flex items-center">
+                                <input
+                                    class="peer h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-primary"
+                                    type="checkbox" />
+                            </div>
+                            <span
+                                class="text-sm text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Delete
+                                source files after successful transfer</span>
+                        </label>
+                        <label class="flex items-start gap-3 cursor-pointer group">
+                            <div class="relative flex items-center">
+                                <input checked=""
+                                    class="peer h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary dark:border-slate-600 dark:bg-slate-700 dark:checked:bg-primary"
+                                    type="checkbox" />
+                            </div>
+                            <span
+                                class="text-sm text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Preserve
+                                sharing permissions &amp; metadata</span>
+                        </label>
+                    </div>
+                    <div class="mt-4 pt-4 border-t border-slate-100 dark:border-slate-700">
+                        <button
+                            class="w-full bg-primary hover:bg-blue-600 text-white font-semibold py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2">
+                            <span>Start Transfer</span>
+                            <span class="material-symbols-outlined text-[20px]">send</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Right Pane: Destination Explorer -->
+            <div
+                class="flex-1 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col overflow-hidden">
+                <div
+                    class="p-4 border-b border-slate-200 dark:border-slate-700 flex flex-col gap-3 bg-slate-50/50 dark:bg-slate-800/50">
+                    <div class="flex items-center justify-between">
+                        <h3 class="font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span class="material-symbols-outlined text-primary text-[20px]">drive_folder_upload</span>
+                            Destination Path
+                        </h3>
+                    </div>
+                    <!-- Breadcrumbs -->
+                    <div
+                        class="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 overflow-x-auto whitespace-nowrap pb-1">
+                        <span class="hover:text-primary cursor-pointer">My Drive</span>
+                        <span class="material-symbols-outlined text-[14px]">chevron_right</span>
+                        <span class="hover:text-primary cursor-pointer">Work</span>
+                        <span class="material-symbols-outlined text-[14px]">chevron_right</span>
+                        <span class="font-semibold text-slate-900 dark:text-white">Q3 Imports</span>
+                    </div>
+                </div>
+                <div class="flex-1 overflow-y-auto custom-scrollbar p-2">
+                    <!-- Tree View -->
+                    <div class="flex flex-col gap-1">
+                        <!-- Parent Folder -->
+                        <div
+                            class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer text-slate-600 dark:text-slate-400">
+                            <span
+                                class="material-symbols-outlined text-[20px] cursor-pointer hover:text-slate-900 dark:hover:text-white">arrow_drop_down</span>
+                            <span class="material-symbols-outlined text-amber-400 text-[20px]">folder</span>
+                            <span class="text-sm">Shared With Me</span>
+                        </div>
+                        <!-- Active Parent -->
+                        <div
+                            class="flex items-center gap-2 p-1.5 rounded-lg bg-slate-50 dark:bg-slate-700/30 cursor-pointer text-slate-900 dark:text-white font-medium">
+                            <span
+                                class="material-symbols-outlined text-[20px] transform rotate-90 text-primary">arrow_drop_down</span>
+                            <span class="material-symbols-outlined text-primary text-[20px]">folder_open</span>
+                            <span class="text-sm">My Drive</span>
+                        </div>
+                        <!-- Nested Children -->
+                        <div class="pl-6 border-l border-slate-200 dark:border-slate-700 ml-3 flex flex-col gap-1 mt-1">
+                            <div
+                                class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer text-slate-600 dark:text-slate-400">
+                                <span class="material-symbols-outlined text-[20px] opacity-0">arrow_right</span>
+                                <span class="material-symbols-outlined text-slate-400 text-[20px]">folder</span>
+                                <span class="text-sm">Personal</span>
+                            </div>
+                            <!-- Sub-Folder Open -->
+                            <div
+                                class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer text-slate-900 dark:text-white">
+                                <span
+                                    class="material-symbols-outlined text-[20px] transform rotate-90 text-slate-400">arrow_drop_down</span>
+                                <span class="material-symbols-outlined text-amber-400 text-[20px]">folder</span>
+                                <span class="text-sm">Work</span>
+                            </div>
+                            <!-- Deeply Nested -->
+                            <div class="pl-6 border-l border-slate-200 dark:border-slate-700 ml-3 flex flex-col gap-1">
+                                <div
+                                    class="flex items-center gap-2 p-1.5 rounded-lg bg-primary/10 text-primary cursor-pointer border border-primary/20">
+                                    <span class="material-symbols-outlined text-[20px] opacity-0">arrow_right</span>
+                                    <span class="material-symbols-outlined text-primary text-[20px]">folder_open</span>
+                                    <span class="text-sm font-semibold">Q3 Imports</span>
+                                </div>
+                                <div
+                                    class="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer text-slate-600 dark:text-slate-400">
+                                    <span class="material-symbols-outlined text-[20px] opacity-0">arrow_right</span>
+                                    <span class="material-symbols-outlined text-slate-400 text-[20px]">folder</span>
+                                    <span class="text-sm">Old Backups</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Create Folder Action -->
+                <div class="p-3 border-t border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50">
+                    <button
+                        class="w-full py-2 flex items-center justify-center gap-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-primary dark:hover:text-primary hover:bg-white dark:hover:bg-slate-700 border border-transparent hover:border-slate-200 dark:hover:border-slate-600 rounded-lg transition-all">
+                        <span class="material-symbols-outlined text-[18px]">create_new_folder</span>
+                        Create New Folder
+                    </button>
+                </div>
+            </div>
+        </div>
+    </main>
+    <!-- Bottom Active Transfer Panel -->
+    <div
+        class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-40 transform translate-y-0 transition-transform">
+        <div class="max-w-[1600px] mx-auto px-6 py-4 flex flex-col md:flex-row gap-4 md:gap-8 md:items-center">
+            <!-- Info Side -->
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center text-primary animate-spin">
+                            <span class="material-symbols-outlined text-[20px]">sync</span>
+                        </div>
+                        <div>
+                            <h4 class="text-sm font-bold text-slate-900 dark:text-white leading-none">Transferring
+                                Files...</h4>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mt-1 font-mono">Current:
+                                Q3_Budget_Final.xlsx</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-sm font-bold text-primary tabular-nums">34%</span>
+                        <p class="text-xs text-slate-500 dark:text-slate-400 tabular-nums">34/120 files</p>
+                    </div>
+                </div>
+                <!-- Progress Bar -->
+                <div class="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 overflow-hidden">
+                    <div
+                        class="bg-primary h-2 rounded-full w-[34%] transition-all duration-500 relative overflow-hidden">
+                        <div class="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]"></div>
+                    </div>
+                </div>
+            </div>
+            <!-- Controls Side -->
+            <div
+                class="flex items-center justify-end gap-3 shrink-0 border-t md:border-t-0 border-slate-100 dark:border-slate-800 pt-3 md:pt-0">
+                <div class="flex flex-col items-end mr-4 hidden lg:flex">
+                    <span class="text-xs font-medium text-slate-500 uppercase tracking-wider">Est. Time</span>
+                    <span class="text-sm font-mono font-bold text-slate-700 dark:text-slate-300">~12m 30s</span>
+                </div>
+                <button
+                    class="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 text-sm font-medium transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">pause</span>
+                    Pause
+                </button>
+                <button
+                    class="flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400 text-sm font-medium transition-colors">
+                    <span class="material-symbols-outlined text-[18px]">cancel</span>
+                    Cancel
+                </button>
+                <button class="ml-2 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
+                    <span class="material-symbols-outlined">expand_more</span>
+                </button>
+            </div>
+        </div>
+    </div>
+    <!-- Animation Keyframes for shimmer effect -->
+    <style>
+        @keyframes shimmer {
+            0% {
+                transform: translateX(-100%);
+            }
+
+            100% {
+                transform: translateX(100%);
+            }
+        }
+    </style>
+</body>
+
+</html>

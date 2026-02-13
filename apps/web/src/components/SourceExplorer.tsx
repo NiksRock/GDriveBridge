@@ -1,4 +1,5 @@
 import React from 'react'
+import Accordion from './Accordion'
 
 type Props = {}
 
@@ -27,17 +28,38 @@ function SourceExplorer({ }: Props) {
                         <div>Size</div>
                     </div>
                     {/** Item Row: Selected **/}
-                    <div className="group flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-primary/20 border border-blue-100 dark:border-primary/30 cursor-pointer">
-                        <div className="flex items-center justify-center w-5">
-                            <span className="material-symbols-outlined text-primary !text-[20px]">check_box</span>
-                        </div>
-                        <div className="flex-1 flex items-center gap-2 min-w-0">
-                            <span className="material-symbols-outlined text-amber-400 !text-[20px]">folder</span>
-                            <span className="text-sm font-medium text-slate-900 dark:text-white truncate">Marketing Assets 2024</span>
-                        </div>
-                        <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">1.2 GB</span>
-                    </div>
-                    {/** Item Row **/}
+                    {/* <Accordion 
+          accordionSummary={<></>} accordionDetails={<></>}/>
+          <TransferAction /> */}
+                    <Accordion
+                        accordionSummary={<div className="group flex w-full items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-primary/20 border border-blue-100 dark:border-primary/30 cursor-pointer">
+                            <div className="flex items-center justify-center w-5">
+                                <span className="material-symbols-outlined text-primary !text-[20px]">check_box</span>
+                            </div>
+                            <div className="flex-1 flex items-center gap-2 min-w-0">
+                                <span className="material-symbols-outlined text-amber-400 !text-[20px]">folder</span>
+                                <span className="text-sm font-medium text-slate-900 dark:text-white truncate">Marketing Assets 2024</span>
+                            </div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">1.2 GB</span>
+                        </div>}
+                        accordionDetails={<></>}
+                    />
+                    <Accordion
+                        accordionSummary={<div className="group flex w-full
+                             items-center gap-3 p-2 
+                        rounded-lg cursor-pointer">
+                            <div className="flex items-center justify-center w-5">
+                                <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-slate-400 !text-[20px]">check_box_outline_blank</span>
+                            </div>
+                            <div className="flex-1 flex items-center gap-2 min-w-0">
+                                <span className="material-symbols-outlined text-slate-400 !text-[20px]">folder</span>
+                                <span className="text-sm text-slate-700 dark:text-slate-300 truncate">Q3 Financial Reports</span>
+                            </div>
+                            <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">45 MB</span>
+                        </div>}
+                        accordionDetails={<></>}
+                    />
+                    {/** Item Row 
                     <div className="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent">
                         <div className="flex items-center justify-center w-5">
                             <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-slate-400 !text-[20px]">check_box_outline_blank</span>
@@ -48,7 +70,7 @@ function SourceExplorer({ }: Props) {
                         </div>
                         <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">45 MB</span>
                     </div>
-                    {/** Item Row **/}
+                    {/** Item Row 
                     <div className="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent">
                         <div className="flex items-center justify-center w-5">
                             <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 group-hover:text-slate-400 !text-[20px]">check_box_outline_blank</span>
@@ -59,7 +81,7 @@ function SourceExplorer({ }: Props) {
                         </div>
                         <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">890 MB</span>
                     </div>
-                    {/** Item Row: Selected **/}
+                    {/** Item Row: Selected 
                     <div className="group flex items-center gap-3 p-2 rounded-lg bg-blue-50 dark:bg-primary/20 border border-blue-100 dark:border-primary/30 cursor-pointer">
                         <div className="flex items-center justify-center w-5">
                             <span className="material-symbols-outlined text-primary !text-[20px]">check_box</span>
@@ -70,7 +92,7 @@ function SourceExplorer({ }: Props) {
                         </div>
                         <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">3.4 GB</span>
                     </div>
-                    {/** More mock items **/}
+                    {/** More mock items 
                     <div className="group flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700/50 cursor-pointer border border-transparent opacity-60">
                         <div className="flex items-center justify-center w-5">
                             <span className="material-symbols-outlined text-slate-300 dark:text-slate-600 !text-[20px]">check_box_outline_blank</span>
@@ -80,7 +102,7 @@ function SourceExplorer({ }: Props) {
                             <span className="text-sm text-slate-700 dark:text-slate-300 truncate">Personal Photos</span>
                         </div>
                         <span className="text-xs text-slate-500 dark:text-slate-400 tabular-nums">12 GB</span>
-                    </div>
+                    </div> **/}
                 </div>
             </div>
         </div>
