@@ -30,8 +30,13 @@ model GoogleAccount {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  // ✅ REQUIRED opposite relations
+  sourceTransfers      Transfer[] @relation("SourceAccount")
+  destinationTransfers Transfer[] @relation("DestinationAccount")
+
   @@unique([userId, email])
 }
+
 
 
 model Transfer {
