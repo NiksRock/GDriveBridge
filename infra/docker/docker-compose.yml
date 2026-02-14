@@ -1,13 +1,38 @@
+version: "3.9"
+
 services:
   redis:
     image: redis:7
+    container_name: gdrivebridge-redis
     ports:
-      - 6379:6379
+      - "6379:6379"
+    restart: unless-stopped
 
   postgres:
     image: postgres:15
+    container_name: gdrivebridge-postgres
     environment:
+      POSTGRES_USER: gdrivebridge
       POSTGRES_PASSWORD: password
       POSTGRES_DB: gdrivebridge
     ports:
-      - 5432:5432
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # Optional DB UI (recommended for dev)
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: gdrivebridge-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@gdrivebridge.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

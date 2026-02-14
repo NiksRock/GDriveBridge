@@ -35,7 +35,6 @@ model GoogleAccount {
   @@unique([userId, email])
 }
 
-
 model Transfer {
   id                   String   @id @default(uuid())
   userId               String
@@ -45,7 +44,7 @@ model Transfer {
 
   destinationFolderId  String
 
-  mode                 TransferMode @default(copy)
+  mode                 TransferMode   @default(copy)
   status               TransferStatus @default(pending)
 
   totalItems           Int      @default(0)
@@ -56,14 +55,30 @@ model Transfer {
   startedAt            DateTime?
   finishedAt           DateTime?
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                 User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sourceAccount        GoogleAccount @relation(
+    "SourceAccount",
+    fields: [sourceAccountId],
+    references: [id]
+  )
+
+  destinationAccount   GoogleAccount @relation(
+    "DestinationAccount",
+    fields: [destinationAccountId],
+    references: [id]
+  )
+
   items                TransferItem[]
   events               TransferEvent[]
+
+  @@index([userId])
+  @@index([status])
 }
 
 model TransferItem {
-  id          String   @id @default(uuid())
-  transferId  String
+  id           String   @id @default(uuid())
+  transferId   String
 
   googleFileId String
   fileName     String
@@ -76,8 +91,10 @@ model TransferItem {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  transfer     Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
+  @@index([transferId])
+  @@index([status])
 }
 
 model TransferEvent {
@@ -90,7 +107,9 @@ model TransferEvent {
 
   createdAt  DateTime @default(now())
 
-  transfer   Transfer @relation(fields: [transferId], references: [id])
+  transfer   Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+
+  @@index([transferId])
 }
 
 enum TransferMode {
@@ -109,7 +128,7 @@ enum TransferStatus {
 
 enum ItemStatus {
   pending
-  in_progress
+  running
   completed
   failed
   skipped

@@ -1,45 +1,56 @@
 import { Injectable } from '@nestjs/common';
+
+import { QUEUE_NAMES, TransferStatus, ItemStatus } from '@gdrivebridge/shared';
+
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
-import { transferQueue } from 'src/queue/transfer.queue';
+import { transferQueue } from '../../queue/transfer.queue';
 
 @Injectable()
 export class TransfersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /**
    * Creates a transfer session + items in DB
+   * Enqueues the job for worker execution
    */
   async createTransfer(dto: CreateTransferDto) {
-    // ✅ TEMP: Ensure user exists
-    await this.prisma.user.upsert({
-      where: { id: dto.userId },
-      update: {},
-      create: {
-        id: dto.userId,
-        email: `${dto.userId}@demo.local`,
-      },
-    });
+    /**
+     * ❗ Remove TEMP upsert hack later
+     * User should come from Auth context (OAuth session)
+     */
 
-    // ✅ Now create transfer
+    /**
+     * 1. Create transfer record
+     */
     const transfer = await this.prisma.transfer.create({
       data: {
         userId: dto.userId,
+
         sourceAccountId: dto.sourceAccountId,
         destinationAccountId: dto.destinationAccountId,
+
         destinationFolderId: dto.destinationFolderId,
+
         mode: dto.mode,
-        status: 'pending',
+        status: TransferStatus.PENDING,
+
         totalItems: dto.sourceFileIds.length,
 
+        /**
+         * Create transfer items
+         */
         items: {
           create: dto.sourceFileIds.map((fileId) => ({
             googleFileId: fileId,
-            fileName: 'unknown',
-            status: 'pending',
+            fileName: 'unknown', // TODO: fetch metadata later
+            status: ItemStatus.PENDING,
           })),
         },
 
+        /**
+         * Log creation event
+         */
         events: {
           create: {
             type: 'created',
@@ -47,16 +58,30 @@ export class TransfersService {
           },
         },
       },
+
       include: {
         items: true,
         events: true,
       },
     });
-    await transferQueue.add('transfer.process', {
-      transferId: transfer.id,
-    });
 
-    console.log('✅ Job enqueued:', transfer.id);
+    /**
+     * 2. Enqueue background job
+     */
+    await transferQueue.add(
+      QUEUE_NAMES.TRANSFER,
+      { transferId: transfer.id },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    );
+
+    console.log('✅ Transfer job enqueued:', transfer.id);
+
     return transfer;
   }
 }
