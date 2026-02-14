@@ -21,3 +21,5 @@ structure.txt
 clean-structure.txt
 packages/**/dist
 apps/**/dist
+apps/api/prisma/dev.db
+apps/api/prisma/dev.db-journal
