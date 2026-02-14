@@ -1,6 +1,14 @@
 {
   "root": true,
-  "ignorePatterns": ["dist", "node_modules", "*.json", ".vscode"],
+  "ignorePatterns": [
+    "dist",
+    "build",
+    "node_modules",
+    ".turbo",
+    ".vite",
+    "apps/**/dist",
+    "packages/**/dist"
+  ],
   "extends": [
     "eslint:recommended",
     "plugin:@typescript-eslint/recommended",

@@ -4,6 +4,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { TransfersController } from './transfers.controller';
 import { TransfersService } from './transfers.service';
 import { PreScanService } from './pre-scan.service';
+import { TransferExpansionService } from './transfer-expansion.service';
 
 import { TransferGateway } from './transfer.gateway';
 import { TransferProgressListener } from './transfer.progress.listener';
@@ -13,6 +14,7 @@ import { TransferProgressListener } from './transfer.progress.listener';
   controllers: [TransfersController],
   providers: [
     TransfersService,
+    TransferExpansionService,
     PreScanService,
     TransferGateway,
     TransferProgressListener,

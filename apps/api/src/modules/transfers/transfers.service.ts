@@ -1,9 +1,9 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-import { PreScanService } from './pre-scan.service';
-import { google } from 'googleapis';
-import { CryptoService } from '../../security/crypto.service';
 
-import { QUEUE_NAMES, TransferStatus, ItemStatus } from '@gdrivebridge/shared';
+import { PreScanService } from './pre-scan.service';
+import { TransferExpansionService } from './transfer-expansion.service';
+
+import { QUEUE_NAMES, TransferStatus } from '@gdrivebridge/shared';
 
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
@@ -14,8 +14,12 @@ export class TransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly preScanService: PreScanService,
-    private readonly cryptoService: CryptoService,
+    private readonly expansionService: TransferExpansionService, // ✅ REQUIRED
   ) {}
+
+  // ============================================================
+  // CREATE TRANSFER (DEFT §5 + §8 compliant)
+  // ============================================================
 
   async createTransfer(userId: string, dto: CreateTransferDto) {
     const user = await this.prisma.user.findUnique({
@@ -25,6 +29,7 @@ export class TransfersService {
     if (!user) {
       throw new ForbiddenException('User not found');
     }
+
     const sourceAccount = await this.prisma.googleAccount.findFirst({
       where: { id: dto.sourceAccountId, userId },
     });
@@ -34,7 +39,7 @@ export class TransfersService {
     }
 
     const destinationAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.destinationAccountId, userId: user.id },
+      where: { id: dto.destinationAccountId, userId },
     });
 
     if (!destinationAccount) {
@@ -42,7 +47,7 @@ export class TransfersService {
     }
 
     // ============================================================
-    // 🔒 3️⃣ MANDATORY Pre-Scan Enforcement (DEFT §12)
+    // 1️⃣ Mandatory Pre-Scan Enforcement (DEFT §12)
     // ============================================================
 
     const preScan = await this.preScanService.runPreScan(userId, {
@@ -61,89 +66,55 @@ export class TransfersService {
       });
     }
 
-    /**
-     * 4️⃣ Create Drive client for metadata lookup
-     */
-    const oauth = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI,
-    );
+    // ============================================================
+    // 2️⃣ Create Transfer Session FIRST (Crash-safe)
+    // ============================================================
 
-    oauth.setCredentials({
-      refresh_token: this.cryptoService.decrypt(sourceAccount.refreshTokenEncrypted),
-    });
-
-    const drive = google.drive({
-      version: 'v3',
-      auth: oauth,
-    });
-
-    /**
-     * 5️⃣ Enrich selected items
-     */
-    const enrichedItems: Array<{
-      sourceFileId: string;
-      fileName: string;
-      mimeType?: string | null;
-      sizeBytes?: bigint | null;
-      status: ItemStatus;
-    }> = [];
-
-    for (const fileId of dto.sourceFileIds) {
-      const meta = await drive.files.get({
-        fileId,
-        fields: 'id,name,mimeType,size',
-      });
-
-      enrichedItems.push({
-        sourceFileId: meta.data.id!,
-        fileName: meta.data.name ?? 'unknown',
-        mimeType: meta.data.mimeType,
-        sizeBytes: meta.data.size ? BigInt(meta.data.size) : null,
-        status: ItemStatus.PENDING,
-      });
-    }
-
-    /**
-     * 6️⃣ Create Transfer + Persist Risk Metadata
-     * (DEFT §5 + §12)
-     */
     const transfer = await this.prisma.transferJob.create({
       data: {
-        userId: user.id,
+        userId,
         sourceAccountId: sourceAccount.id,
         destinationAccountId: destinationAccount.id,
         destinationFolderId: dto.destinationFolderId,
         mode: dto.mode,
         status: TransferStatus.PENDING,
-
-        totalItems: enrichedItems.length,
-        totalBytes: BigInt(preScan.estimatedBytes),
-
         riskFlags: preScan.riskFlags,
         warnings: preScan.warnings,
-
-        items: {
-          create: enrichedItems,
-        },
-
-        events: {
-          create: {
-            type: 'created',
-            message: 'Transfer session created after successful Pre-Scan',
-          },
-        },
-      },
-      include: {
-        items: true,
-        events: true,
       },
     });
 
-    /**
-     * 7️⃣ Enqueue Worker Job
-     */
+    console.log('🧠 Transfer session created:', transfer.id);
+
+    // ============================================================
+    // 3️⃣ Recursive Expansion + Persistence (DEFT §5 + §8)
+    // ============================================================
+
+    const expansion = await this.expansionService.expandAndPersist(
+      transfer.id,
+      sourceAccount.refreshTokenEncrypted,
+      dto.sourceFileIds,
+    );
+
+    // ============================================================
+    // 4️⃣ Update totals AFTER expansion completes
+    // ============================================================
+
+    await this.prisma.transferJob.update({
+      where: { id: transfer.id },
+      data: {
+        totalItems: expansion.totalItems,
+        totalBytes: expansion.totalBytes,
+      },
+    });
+
+    console.log(
+      `📦 Expansion complete: ${expansion.totalItems} items, ${expansion.totalBytes} bytes`,
+    );
+
+    // ============================================================
+    // 5️⃣ Enqueue Worker ONLY after full persistence
+    // ============================================================
+
     await transferQueue.add(
       QUEUE_NAMES.TRANSFER,
       { transferId: transfer.id },
@@ -155,14 +126,83 @@ export class TransfersService {
 
     console.log('✅ Transfer job enqueued:', transfer.id);
 
-    return transfer;
+    return {
+      id: transfer.id,
+      totalItems: expansion.totalItems,
+      totalBytes: expansion.totalBytes.toString(),
+      status: TransferStatus.PENDING,
+    };
+  }
+
+  // ============================================================
+  // LIST TRANSFERS
+  // ============================================================
+  async pauseTransfer(userId: string, id: string) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: { id, userId },
+    });
+
+    if (!transfer) throw new NotFoundException('Transfer not found');
+
+    await this.prisma.transferJob.update({
+      where: { id },
+      data: {
+        status: TransferStatus.PAUSED,
+        pausedAt: new Date(),
+      },
+    });
+
+    return { status: 'PAUSED' };
+  }
+
+  async resumeTransfer(userId: string, id: string) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: { id, userId },
+    });
+
+    if (!transfer) throw new NotFoundException('Transfer not found');
+
+    if (
+      transfer.status !== TransferStatus.PAUSED &&
+      transfer.status !== TransferStatus.AUTO_PAUSED_QUOTA
+    ) {
+      throw new ForbiddenException('Transfer is not paused');
+    }
+
+    await this.prisma.transferJob.update({
+      where: { id },
+      data: {
+        status: TransferStatus.PENDING,
+        pausedAt: null,
+      },
+    });
+
+    await transferQueue.add(QUEUE_NAMES.TRANSFER, { transferId: id });
+
+    return { status: 'RESUMED' };
+  }
+  async cancelTransfer(userId: string, id: string) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: { id, userId },
+    });
+
+    if (!transfer) throw new NotFoundException('Transfer not found');
+
+    await this.prisma.transferJob.update({
+      where: { id },
+      data: {
+        status: TransferStatus.CANCELLED,
+        finishedAt: new Date(),
+      },
+    });
+
+    return { status: 'CANCELLED' };
   }
 
   async listTransfers(userId: string) {
     const transfers = await this.prisma.transferJob.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      include: { items: true },
     });
 
     return transfers.map((t) => ({
@@ -177,16 +217,24 @@ export class TransfersService {
     }));
   }
 
+  // ============================================================
+  // GET TRANSFER BY ID
+  // ============================================================
+
   async getTransferById(userId: string, id: string) {
     const transfer = await this.prisma.transferJob.findFirst({
       where: { id, userId },
       include: { items: true, events: true },
     });
 
-    if (!transfer) throw new NotFoundException('Transfer not found');
+    if (!transfer) {
+      throw new NotFoundException('Transfer not found');
+    }
 
     return {
       ...transfer,
+      totalBytes: transfer.totalBytes?.toString(),
+      transferredBytes: transfer.transferredBytes?.toString(),
       progress:
         transfer.totalItems === 0
           ? 0

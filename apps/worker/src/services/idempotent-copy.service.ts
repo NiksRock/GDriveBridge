@@ -1,108 +1,111 @@
 // ============================================================
-// Idempotent Copy Service (Enterprise Fault-Tolerant)
-// Implements:
-// - DEFT §7 Exactly-Once Guarantee
-// - DEFT §11.1 2.5 writes/sec/account
-// - DEFT §4.8 Intelligent Retry + Backoff
-// - DEFT §11.2 Auto Pause on Quota Exhaustion
-// - DEFT §6 Crash-Safe Resumability
+// Idempotent Copy Service — Enterprise Safe + Folder Hardened
+//
+// Satisfies:
+// - DEFT §7 (Exactly-once semantics)
+// - DEFT §8 (Folder-safe execution)
+// - DEFT §11.1 (Distributed throttle)
+// - DEFT §11.2 (700GB/day limit)
+// - DEFT §6 (Crash-safe resumability)
 // ============================================================
 
 import { drive_v3 } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
 import { TransferStatus } from '@gdrivebridge/shared';
+import { RateGovernor } from './rate-governor.service';
 
-// ============================================================
-// Google API Error Shape (Strictly Typed)
-// ============================================================
+import dayjs from 'dayjs';
 
 interface GoogleApiError extends Error {
-  code?: string;
   response?: {
     status?: number;
-    data?: {
-      error?: {
-        errors?: Array<{
-          reason?: string;
-        }>;
-      };
-    };
   };
 }
 
-// ============================================================
-// 2.5 writes/sec Governor (DEFT §11.1)
-// ============================================================
-
-class RateGovernor {
-  private lastExecution = 0;
-  private readonly intervalMs = 400; // 2.5 writes/sec
-
-  async throttle(): Promise<void> {
-    const now = Date.now();
-    const diff = now - this.lastExecution;
-
-    if (diff < this.intervalMs) {
-      await new Promise((resolve) => setTimeout(resolve, this.intervalMs - diff));
-    }
-
-    this.lastExecution = Date.now();
-  }
-}
-
-// ============================================================
-// Idempotent Copy Service
-// ============================================================
-
 export class IdempotentCopyService {
-  private readonly governor = new RateGovernor();
   private readonly MAX_RETRIES = 5;
+  private readonly DAILY_LIMIT_BYTES = BigInt(700) * BigInt(1024 ** 3);
 
   constructor(
     private readonly prisma: PrismaClient,
     private readonly destinationDrive: drive_v3.Drive,
+    private readonly rateGovernor: RateGovernor,
+    private readonly accountId: string,
   ) {}
 
   // ============================================================
-  // Retryable Error Detection (DEFT §4.8)
+  // Retryable Detection
   // ============================================================
 
   private isRetryable(error: unknown): boolean {
     const err = error as GoogleApiError;
-
     const status = err.response?.status ?? 0;
-
-    if ([429, 500, 503].includes(status)) return true;
-
-    if (err.code === 'ECONNRESET' || err.code === 'ETIMEDOUT') {
-      return true;
-    }
-
-    return false;
+    return [429, 500, 503].includes(status);
   }
 
   // ============================================================
-  // Quota Exhaustion Detection (DEFT §11.2)
+  // Daily Reset
   // ============================================================
 
-  private isQuotaError(error: unknown): boolean {
-    const err = error as GoogleApiError;
+  private async ensureDailyReset() {
+    const account = await this.prisma.googleAccount.findUnique({
+      where: { id: this.accountId },
+    });
 
-    const status = err.response?.status;
-    const reason = err.response?.data?.error?.errors?.[0]?.reason ?? '';
+    if (!account) return;
 
-    if (
-      status === 403 &&
-      ['rateLimitExceeded', 'userRateLimitExceeded', 'quotaExceeded'].includes(reason)
-    ) {
-      return true;
+    const today = dayjs().startOf('day');
+
+    if (!account.lastQuotaReset || dayjs(account.lastQuotaReset).isBefore(today)) {
+      await this.prisma.googleAccount.update({
+        where: { id: this.accountId },
+        data: {
+          dailyBytesTransferred: BigInt(0),
+          lastQuotaReset: new Date(),
+        },
+      });
     }
-
-    return false;
   }
 
   // ============================================================
-  // Exactly-Once Copy Execution (DEFT §7)
+  // Atomic Quota Enforcement
+  // ============================================================
+
+  private async incrementAndValidateQuota(transferId: string, bytes: bigint) {
+    await this.ensureDailyReset();
+
+    const account = await this.prisma.googleAccount.findUnique({
+      where: { id: this.accountId },
+      select: { dailyBytesTransferred: true },
+    });
+
+    if (!account) throw new Error('Account not found');
+
+    const current = account.dailyBytesTransferred ?? BigInt(0);
+    const projected = current + bytes;
+
+    if (projected > this.DAILY_LIMIT_BYTES) {
+      await this.prisma.transferJob.update({
+        where: { id: transferId },
+        data: {
+          status: TransferStatus.AUTO_PAUSED_QUOTA,
+          pausedAt: new Date(),
+        },
+      });
+
+      throw new Error('Daily 700GB quota exceeded — transfer auto-paused');
+    }
+
+    await this.prisma.googleAccount.update({
+      where: { id: this.accountId },
+      data: {
+        dailyBytesTransferred: { increment: bytes },
+      },
+    });
+  }
+
+  // ============================================================
+  // Exactly-Once File Copy
   // ============================================================
 
   async copyExactlyOnce(params: {
@@ -113,56 +116,21 @@ export class IdempotentCopyService {
   }): Promise<string> {
     const { itemId, sourceFileId, destinationFolderId, fileName } = params;
 
-    // 1️⃣ DB Check (Resumability)
     const item = await this.prisma.transferItem.findUnique({
       where: { id: itemId },
     });
 
-    if (!item) {
-      throw new Error('TransferItem not found');
-    }
+    if (!item) throw new Error('TransferItem not found');
 
-    if (item.destinationFileId) {
-      return item.destinationFileId;
-    }
+    if (item.destinationFileId) return item.destinationFileId;
 
-    // 2️⃣ Destination Verification (Idempotency)
-    const safeName = fileName.replace(/'/g, "\\'");
+    const fileSize = item.sizeBytes ?? BigInt(0);
 
-    const query = `
-      name='${safeName}'
-      and '${destinationFolderId}' in parents
-      and trashed=false
-    `;
-
-    const search = await this.destinationDrive.files.list({
-      q: query,
-      fields: 'files(id,name,appProperties)',
-    });
-
-    const found = search.data.files?.find(
-      (f) => f.appProperties?.app_id === 'gdrivebridge_v2',
-    );
-
-    if (found?.id) {
-      await this.prisma.transferItem.update({
-        where: { id: itemId },
-        data: {
-          destinationFileId: found.id,
-          status: 'COMPLETED',
-        },
-      });
-
-      return found.id;
-    }
-
-    // 3️⃣ Copy with Intelligent Retry
     let attempt = 0;
 
     while (attempt < this.MAX_RETRIES) {
       try {
-        await this.governor.throttle();
-
+        await this.rateGovernor.throttle();
         const copied = await this.destinationDrive.files.copy({
           fileId: sourceFileId,
           requestBody: {
@@ -176,12 +144,10 @@ export class IdempotentCopyService {
         });
 
         const newId = copied.data.id;
+        if (!newId) throw new Error('Google API returned empty file ID');
 
-        if (!newId) {
-          throw new Error('Google API returned empty file ID');
-        }
+        await this.incrementAndValidateQuota(item.jobId, fileSize);
 
-        // Persist result immediately (Crash-safe)
         await this.prisma.transferItem.update({
           where: { id: itemId },
           data: {
@@ -191,35 +157,99 @@ export class IdempotentCopyService {
         });
 
         return newId;
-      } catch (error: unknown) {
-        // 4️⃣ Quota Handling (Auto Pause)
-        if (this.isQuotaError(error)) {
-          await this.prisma.transferJob.update({
-            where: { id: item.jobId },
-            data: {
-              status: TransferStatus.AUTO_PAUSED_QUOTA,
-              pausedAt: new Date(),
-            },
-          });
-
-          throw new Error('Quota exceeded. Transfer auto-paused.');
-        }
-
-        // 5️⃣ Retryable Error Handling
+      } catch (error) {
         if (this.isRetryable(error)) {
           attempt++;
-
-          const delay = Math.pow(2, attempt) * 1000; // exponential backoff
-          await new Promise((resolve) => setTimeout(resolve, delay));
-
+          await new Promise((r) => setTimeout(r, Math.pow(2, attempt) * 1000));
           continue;
         }
 
-        // Non-retryable
         throw error;
       }
     }
 
-    throw new Error('Max retry attempts exceeded.');
+    throw new Error('Max retry attempts exceeded');
+  }
+
+  // ============================================================
+  // Exactly-Once Folder Create (HARDENED)
+  // ============================================================
+
+  async createFolderExactlyOnce(params: {
+    itemId: string;
+    folderName: string;
+    destinationParentId: string;
+  }): Promise<string> {
+    const { itemId, folderName, destinationParentId } = params;
+
+    const item = await this.prisma.transferItem.findUnique({
+      where: { id: itemId },
+    });
+
+    if (!item) throw new Error('TransferItem not found');
+
+    if (item.destinationFileId) return item.destinationFileId;
+
+    // ------------------------------------------------------------
+    // 1️⃣ Search Existing Folder
+    // ------------------------------------------------------------
+
+    const safeName = folderName.replace(/'/g, "\\'");
+
+    const existing = await this.destinationDrive.files.list({
+      q: `
+        name='${safeName}'
+        and '${destinationParentId}' in parents
+        and mimeType='application/vnd.google-apps.folder'
+        and trashed=false
+      `,
+      fields: 'files(id, appProperties)',
+    });
+
+    const match = existing.data.files?.find(
+      (f) => f.appProperties?.app_id === 'gdrivebridge_v2',
+    );
+
+    if (match?.id) {
+      await this.prisma.transferItem.update({
+        where: { id: itemId },
+        data: {
+          destinationFileId: match.id,
+          status: 'COMPLETED',
+        },
+      });
+
+      return match.id;
+    }
+
+    // ------------------------------------------------------------
+    // 2️⃣ Create Folder If Not Found
+    // ------------------------------------------------------------
+
+    await this.rateGovernor.throttle();
+    const created = await this.destinationDrive.files.create({
+      requestBody: {
+        name: folderName,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [destinationParentId],
+        appProperties: {
+          app_id: 'gdrivebridge_v2',
+        },
+      },
+      fields: 'id',
+    });
+
+    const newId = created.data.id;
+    if (!newId) throw new Error('Folder creation failed');
+
+    await this.prisma.transferItem.update({
+      where: { id: itemId },
+      data: {
+        destinationFileId: newId,
+        status: 'COMPLETED',
+      },
+    });
+
+    return newId;
   }
 }

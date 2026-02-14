@@ -1,16 +1,17 @@
 // ============================================================
-// PreScanService
+// PreScanService (Pagination-Safe + Accurate)
 // Satisfies:
 // - DEFT §12 (Mandatory Pre-Scan)
-// - DEFT §11.3 (500k Item Limit Protection)
-// - DEFT §11.2 (Byte Estimation for Quota Control)
+// - DEFT §11.3 (500k Item Protection)
+// - DEFT §11.2 (Byte Estimation Accuracy)
+// - Handles >1000 children safely
 // ============================================================
-import { CryptoService } from '../../security/crypto.service';
 
 import { Injectable, ForbiddenException } from '@nestjs/common';
-import { google } from 'googleapis';
+import { google, drive_v3 } from 'googleapis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { PreScanDto } from './dto/pre-scan.dto';
+import { CryptoService } from '../../security/crypto.service';
 
 @Injectable()
 export class PreScanService {
@@ -21,7 +22,7 @@ export class PreScanService {
 
   async runPreScan(userId: string, dto: PreScanDto) {
     const sourceAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.sourceAccountId, userId: userId },
+      where: { id: dto.sourceAccountId, userId },
     });
 
     if (!sourceAccount) {
@@ -29,34 +30,25 @@ export class PreScanService {
     }
 
     const destinationAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.destinationAccountId, userId: userId },
+      where: { id: dto.destinationAccountId, userId },
     });
 
     if (!destinationAccount) {
       throw new ForbiddenException('Invalid destination account');
     }
 
-    const oauth = new google.auth.OAuth2(
-      process.env.GOOGLE_CLIENT_ID,
-      process.env.GOOGLE_CLIENT_SECRET,
-      process.env.GOOGLE_REDIRECT_URI,
-    );
-
-    oauth.setCredentials({
-      refresh_token: this.cryptoService.decrypt(sourceAccount.refreshTokenEncrypted),
-    });
-
-    const drive = google.drive({
-      version: 'v3',
-      auth: oauth,
-    });
+    const drive = this.buildDriveClient(sourceAccount.refreshTokenEncrypted);
 
     let totalFiles = 0;
     let totalFolders = 0;
     let totalBytes = BigInt(0);
     let maxDepth = 0;
 
-    const scanRecursive = async (fileId: string, depth: number) => {
+    // ------------------------------------------------------------
+    // Recursive Scanner (Pagination Safe)
+    // ------------------------------------------------------------
+
+    const scanRecursive = async (fileId: string, depth: number): Promise<void> => {
       if (depth > maxDepth) maxDepth = depth;
 
       const meta = await drive.files.get({
@@ -64,22 +56,33 @@ export class PreScanService {
         fields: 'id,name,mimeType,size',
       });
 
-      if (meta.data.mimeType === 'application/vnd.google-apps.folder') {
+      const file = meta.data;
+
+      if (file.mimeType === 'application/vnd.google-apps.folder') {
         totalFolders++;
 
-        const children = await drive.files.list({
-          q: `'${fileId}' in parents and trashed=false`,
-          fields: 'files(id,mimeType,size)',
-        });
+        let pageToken: string | undefined = undefined;
 
-        for (const child of children.data.files ?? []) {
-          if (!child.id) continue;
-          await scanRecursive(child.id, depth + 1);
-        }
+        do {
+          const children = await drive.files.list({
+            q: `'${fileId}' in parents and trashed=false`,
+            fields: 'nextPageToken, files(id,mimeType,size)',
+            pageSize: 1000,
+            pageToken,
+          });
+
+          for (const child of children.data.files ?? []) {
+            if (!child.id) continue;
+            await scanRecursive(child.id, depth + 1);
+          }
+
+          pageToken = children.data.nextPageToken ?? undefined;
+        } while (pageToken);
       } else {
         totalFiles++;
-        if (meta.data.size) {
-          totalBytes += BigInt(meta.data.size);
+
+        if (file.size) {
+          totalBytes += BigInt(file.size);
         }
       }
     };
@@ -94,7 +97,7 @@ export class PreScanService {
     const warnings: string[] = [];
 
     // ============================================================
-    // 500k Destination Limit Protection (DEFT §11.3)
+    // 500k Item Limit Risk
     // ============================================================
 
     if (totalItems > 450_000) {
@@ -103,10 +106,11 @@ export class PreScanService {
     }
 
     // ============================================================
-    // Daily Byte Cap Protection (DEFT §11.2)
+    // Daily Quota Projection
     // ============================================================
 
     const dailyBytes = destinationAccount.dailyBytesTransferred ?? BigInt(0);
+
     const projected = dailyBytes + totalBytes;
 
     const GB = BigInt(1024 ** 3);
@@ -126,5 +130,26 @@ export class PreScanService {
       warnings,
       canStart: riskFlags.length === 0,
     };
+  }
+
+  // ------------------------------------------------------------
+  // Drive Client Builder
+  // ------------------------------------------------------------
+
+  private buildDriveClient(refreshTokenEncrypted: string): drive_v3.Drive {
+    const oauth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI,
+    );
+
+    oauth.setCredentials({
+      refresh_token: this.cryptoService.decrypt(refreshTokenEncrypted),
+    });
+
+    return google.drive({
+      version: 'v3',
+      auth: oauth,
+    });
   }
 }

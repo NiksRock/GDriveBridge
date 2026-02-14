@@ -4,6 +4,7 @@ import { CryptoService } from '../../security/crypto.service';
 import { GoogleOAuthService } from './google-oauth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthService } from './auth.service';
+import { Public } from '../../auth/public.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -19,6 +20,7 @@ export class AuthController {
    *
    * GET /api/auth/google?userId=demo-user
    */
+  @Public()
   @Get('google')
   async connect(@Query('userId') userId: string, @Res() res: Response) {
     if (!userId) {
@@ -36,6 +38,7 @@ export class AuthController {
    * - code (auth code)
    * - state (userId)
    */
+  @Public()
   @Get('google/callback')
   async callback(@Query('code') code: string, @Query('state') userId: string) {
     if (!userId) {

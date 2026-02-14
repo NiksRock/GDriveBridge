@@ -12,6 +12,19 @@ export class TransfersController {
     private readonly transfersService: TransfersService,
     private readonly preScanService: PreScanService,
   ) {}
+  @Post(':id/pause')
+  pause(@Req() req, @Param('id') id: string) {
+    return this.transfersService.pauseTransfer(req.user.id, id);
+  }
+
+  @Post(':id/resume')
+  resume(@Req() req, @Param('id') id: string) {
+    return this.transfersService.resumeTransfer(req.user.id, id);
+  }
+  @Post(':id/cancel')
+  cancel(@Req() req, @Param('id') id: string) {
+    return this.transfersService.cancelTransfer(req.user.id, id);
+  }
 
   @Post('pre-scan')
   async preScan(

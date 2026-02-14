@@ -123,7 +123,7 @@ model TransferItem {
   mimeType     String?
   sizeBytes    BigInt?
 
-  checksum     String?   // Optional verification
+  checksum     String?
   depth        Int       @default(0)
 
   status       ItemStatus @default(PENDING)
@@ -139,7 +139,11 @@ model TransferItem {
   @@index([status])
   @@index([sourceFileId])
   @@index([destinationFileId])
+
+  // 🔥 CRITICAL: Exactly-once expansion protection
+  @@unique([jobId, sourceFileId])
 }
+
 
 // ============================================================
 // TRANSFER EVENTS (Real-Time + System Events)

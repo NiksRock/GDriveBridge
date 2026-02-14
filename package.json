@@ -35,22 +35,12 @@
     "turbo": "^2.0.0",
     "typescript": "^5.5.0"
   },
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx,json,md}": [
-      "prettier --write"
-    ]
-  },
   "dependencies": {
     "googleapis": "^171.4.0"
   },
-  "pipeline": {
-    "dev": {
-      "cache": false
-    },
-    "build": {
-      "dependsOn": [
-        "^build"
-      ]
+  "pnpm": {
+    "overrides": {
+      "ioredis": "5.9.3"
     }
   }
 }
