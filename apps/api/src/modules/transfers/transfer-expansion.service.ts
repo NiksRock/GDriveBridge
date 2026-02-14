@@ -55,7 +55,7 @@ export class TransferExpansionService {
 
     const meta = await drive.files.get({
       fileId: sourceFileId,
-      fields: 'id,name,mimeType,size',
+      fields: 'id,name,mimeType,size,md5Checksum',
     });
 
     const file = meta.data;
@@ -77,6 +77,7 @@ export class TransferExpansionService {
         fileName: file.name ?? 'unknown',
         mimeType: file.mimeType,
         sizeBytes: file.size ? BigInt(file.size) : null,
+        checksum: file.md5Checksum ?? null, // 🔥 DEFT §9 integrity tracking
         depth,
         status: ItemStatus.PENDING,
       },

@@ -38,7 +38,10 @@ export class TransfersController {
   pause(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.transfersService.pauseTransfer(req.user.id, id);
   }
-
+  @Post(':id/retry-failed')
+  async retryFailed(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.transfersService.retryFailedItems(req.user.id, id);
+  }
   @Post(':id/resume')
   resume(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.transfersService.resumeTransfer(req.user.id, id);

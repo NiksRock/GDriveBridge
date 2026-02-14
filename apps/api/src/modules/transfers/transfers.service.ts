@@ -133,7 +133,92 @@ export class TransfersService {
       status: TransferStatus.PENDING,
     };
   }
+  async retryFailedItems(userId: string, transferId: string) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: { id: transferId, userId },
+    });
 
+    if (!transfer) {
+      throw new NotFoundException('Transfer not found');
+    }
+
+    // ------------------------------------------------------------
+    // Only allow retry if there are failed items
+    // ------------------------------------------------------------
+
+    if (transfer.failedItems === 0) {
+      throw new ForbiddenException('No failed items to retry');
+    }
+
+    if (
+      transfer.status !== TransferStatus.FAILED &&
+      transfer.status !== TransferStatus.COMPLETED
+    ) {
+      throw new ForbiddenException('Retry allowed only after transfer has finished');
+    }
+
+    // ------------------------------------------------------------
+    // Reset failed items to PENDING
+    // ------------------------------------------------------------
+
+    const failedItems = await this.prisma.transferItem.findMany({
+      where: {
+        jobId: transferId,
+        status: 'FAILED',
+      },
+      select: { id: true },
+    });
+
+    if (failedItems.length === 0) {
+      throw new ForbiddenException('No failed items found');
+    }
+
+    await this.prisma.$transaction([
+      // Reset items
+      this.prisma.transferItem.updateMany({
+        where: {
+          jobId: transferId,
+          status: 'FAILED',
+        },
+        data: {
+          status: 'PENDING',
+          errorMessage: null,
+        },
+      }),
+
+      // Reset job counters
+      this.prisma.transferJob.update({
+        where: { id: transferId },
+        data: {
+          status: TransferStatus.PENDING,
+          failedItems: 0,
+          finishedAt: null,
+        },
+      }),
+
+      // Log event
+      this.prisma.transferEvent.create({
+        data: {
+          jobId: transferId,
+          type: 'retry.failed.items',
+          message: `Retrying ${failedItems.length} failed items`,
+        },
+      }),
+    ]);
+
+    // ------------------------------------------------------------
+    // Re-enqueue job
+    // ------------------------------------------------------------
+
+    await transferQueue.add(QUEUE_NAMES.TRANSFER, {
+      transferId,
+    });
+
+    return {
+      message: 'Failed items reset and transfer resumed',
+      retriedItems: failedItems.length,
+    };
+  }
   // ============================================================
   // LIST TRANSFERS
   // ============================================================
@@ -188,13 +273,23 @@ export class TransfersService {
 
     if (!transfer) throw new NotFoundException('Transfer not found');
 
-    await this.prisma.transferJob.update({
-      where: { id },
-      data: {
-        status: TransferStatus.CANCELLED,
-        finishedAt: new Date(),
-      },
-    });
+    await this.prisma.$transaction([
+      this.prisma.transferJob.update({
+        where: { id },
+        data: {
+          status: TransferStatus.CANCELLED,
+          finishedAt: new Date(),
+        },
+      }),
+
+      this.prisma.transferEvent.create({
+        data: {
+          jobId: id,
+          type: 'transfer.cancelled',
+          message: 'Transfer cancelled by user',
+        },
+      }),
+    ]);
 
     return { status: 'CANCELLED' };
   }

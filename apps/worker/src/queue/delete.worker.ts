@@ -22,6 +22,18 @@ new Worker(
     const drive = GoogleDriveService.getDriveClient(account.refreshTokenEncrypted);
 
     try {
+      const transfer = await prisma.transferJob.findUnique({
+        where: { id: transferId },
+        select: { status: true },
+      });
+
+      if (!transfer || transfer.status !== 'COMPLETED') {
+        console.warn(
+          `🛑 Delete blocked — transfer not completed (status=${transfer?.status})`,
+        );
+        return;
+      }
+
       await drive.files.delete({ fileId: sourceFileId });
 
       await prisma.transferEvent.create({

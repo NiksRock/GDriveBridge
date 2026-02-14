@@ -1,15 +1,18 @@
 // ============================================================
 // Verification Worker
-// Satisfies: DEFT §9 (Verification Before Delete)
+// Satisfies:
+// - DEFT §9 (Checksum + Count Verification Before Delete)
+// - DEFT §7 (Integrity enforcement)
 // ============================================================
 
 import { Worker } from 'bullmq';
 import { QUEUE_NAMES, redisConfig } from '@gdrivebridge/shared';
 import { prisma } from '../db';
 import { deleteQueue } from './delete.queue';
+import { GoogleDriveService } from '../services/google-drive.service';
 
 new Worker(
-  QUEUE_NAMES.TRANSFER_EVENTS, // trigger verification
+  QUEUE_NAMES.TRANSFER_EVENTS,
   async (job) => {
     const { transferId } = job.data;
 
@@ -21,33 +24,79 @@ new Worker(
     if (!transfer) return;
 
     // ============================================================
-    // 1️⃣ Must be MOVE mode
+    // Must be MOVE + COMPLETED
     // ============================================================
 
     if (transfer.mode !== 'MOVE') return;
 
-    // ============================================================
-    // 2️⃣ Must be completed
-    // ============================================================
-
-    if (transfer.status !== 'COMPLETED') return;
-
-    // ============================================================
-    // 3️⃣ File Count Verification
-    // ============================================================
-
-    const total = transfer.totalItems;
-    const completed = transfer.completedItems;
-
-    if (total !== completed) {
-      console.warn('❌ Verification failed: counts mismatch');
+    if (transfer.status !== 'COMPLETED') {
+      console.warn(`⚠️ Verification skipped — status=${transfer.status}`);
       return;
     }
 
-    console.log('✅ Verification passed for:', transferId);
+    // ============================================================
+    // Count Verification
+    // ============================================================
+
+    if (transfer.totalItems !== transfer.completedItems) {
+      console.error('❌ Verification failed: item count mismatch');
+      return;
+    }
 
     // ============================================================
-    // 4️⃣ Enqueue Deletion Tasks
+    // Build destination drive client
+    // ============================================================
+
+    const destinationAccount = await prisma.googleAccount.findUnique({
+      where: { id: transfer.destinationAccountId },
+    });
+
+    if (!destinationAccount) return;
+
+    const drive = GoogleDriveService.getDriveClient(
+      destinationAccount.refreshTokenEncrypted,
+    );
+
+    // ============================================================
+    // Checksum Verification
+    // ============================================================
+
+    for (const item of transfer.items) {
+      // Skip folders (no checksum)
+      if (
+        item.mimeType === 'application/vnd.google-apps.folder' ||
+        !item.checksum ||
+        !item.destinationFileId
+      ) {
+        continue;
+      }
+
+      const meta = await drive.files.get({
+        fileId: item.destinationFileId,
+        fields: 'md5Checksum',
+      });
+
+      const destinationChecksum = meta.data.md5Checksum ?? null;
+
+      if (destinationChecksum !== item.checksum) {
+        console.error(`❌ Checksum mismatch for ${item.fileName}`);
+
+        await prisma.transferEvent.create({
+          data: {
+            jobId: transferId,
+            type: 'verification.failed',
+            message: `Checksum mismatch for ${item.fileName}`,
+          },
+        });
+
+        return; // 🔥 Block deletion entirely
+      }
+    }
+
+    console.log('✅ Verification passed (count + checksum):', transferId);
+
+    // ============================================================
+    // Enqueue Delete Tasks
     // ============================================================
 
     for (const item of transfer.items) {
@@ -59,7 +108,7 @@ new Worker(
           sourceAccountId: transfer.sourceAccountId,
         },
         {
-          delay: 5000, // small safety delay
+          delay: 5000,
         },
       );
     }
