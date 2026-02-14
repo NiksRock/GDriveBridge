@@ -5,12 +5,13 @@ import { PreScanSchema, type PreScanDto } from './dto/pre-scan.dto';
 import { PreScanService } from './pre-scan.service';
 import { TransfersService } from './transfers.service';
 import { CreateTransferSchema, type CreateTransferDto } from './dto/create-transfer.dto';
-
+import { ReportService } from './report.service';
 @Controller('transfers')
 export class TransfersController {
   constructor(
     private readonly transfersService: TransfersService,
     private readonly preScanService: PreScanService,
+    private readonly reportService: ReportService,
   ) {}
   @Post(':id/pause')
   pause(@Req() req, @Param('id') id: string) {
@@ -25,7 +26,10 @@ export class TransfersController {
   cancel(@Req() req, @Param('id') id: string) {
     return this.transfersService.cancelTransfer(req.user.id, id);
   }
-
+  @Get(':id/report')
+  async downloadReport(@Req() req, @Param('id') id: string, @Res() res: Response) {
+    return this.reportService.generateReport(req.user.id, id, res);
+  }
   @Post('pre-scan')
   async preScan(
     @Req() req: Request & { user: { id: string } },

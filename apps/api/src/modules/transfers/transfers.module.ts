@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { PrismaModule } from '../../prisma/prisma.module';
-
+import { ReportService } from './report.service';
 import { TransfersController } from './transfers.controller';
 import { TransfersService } from './transfers.service';
 import { PreScanService } from './pre-scan.service';
@@ -14,6 +14,7 @@ import { TransferProgressListener } from './transfer.progress.listener';
   controllers: [TransfersController],
   providers: [
     TransfersService,
+    ReportService,
     TransferExpansionService,
     PreScanService,
     TransferGateway,

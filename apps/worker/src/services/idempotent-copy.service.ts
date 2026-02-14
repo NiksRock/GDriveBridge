@@ -13,7 +13,7 @@ import { drive_v3 } from 'googleapis';
 import { PrismaClient } from '@prisma/client';
 import { TransferStatus } from '@gdrivebridge/shared';
 import { RateGovernor } from './rate-governor.service';
-
+import { QUEUE_NAMES } from '@gdrivebridge/shared';
 import dayjs from 'dayjs';
 
 interface GoogleApiError extends Error {
@@ -93,6 +93,18 @@ export class IdempotentCopyService {
         },
       });
 
+      // 🔥 Schedule Resume After 24 Hours
+      const { quotaResumeQueue } = await import('../queue/quota-resume.queue');
+
+      await quotaResumeQueue.add(
+        QUEUE_NAMES.QUOTA_RESUME,
+        { transferId },
+        {
+          delay: 24 * 60 * 60 * 1000, // 24 hours
+          jobId: `quota-resume-${transferId}`, // prevent duplicates
+        },
+      );
+
       throw new Error('Daily 700GB quota exceeded — transfer auto-paused');
     }
 
@@ -122,15 +134,80 @@ export class IdempotentCopyService {
 
     if (!item) throw new Error('TransferItem not found');
 
+    // ============================================================
+    // 1️⃣ DB CHECK (Crash-Safe Resume)
+    // ============================================================
+
     if (item.destinationFileId) return item.destinationFileId;
 
     const fileSize = item.sizeBytes ?? BigInt(0);
+
+    // ============================================================
+    // 2️⃣ API VERIFICATION (STRICT DEFT §7)
+    // ============================================================
+
+    const safeName = fileName.replace(/'/g, "\\'");
+
+    const existing = await this.destinationDrive.files.list({
+      q: `
+      name='${safeName}'
+      and '${destinationFolderId}' in parents
+      and trashed=false
+    `,
+      fields: 'files(id, size, appProperties)',
+    });
+
+    const match = existing.data.files?.find(
+      (f) => f.appProperties?.app_id === 'gdrivebridge_v2',
+    );
+
+    if (match?.id) {
+      const remoteSize = match.size ? BigInt(match.size) : BigInt(0);
+
+      if (remoteSize === fileSize) {
+        // ✅ Correct File Found — Recovery
+        await this.prisma.transferItem.update({
+          where: { id: itemId },
+          data: {
+            destinationFileId: match.id,
+            status: 'COMPLETED',
+          },
+        });
+
+        await this.prisma.transferEvent.create({
+          data: {
+            jobId: item.jobId,
+            type: 'automatic.recovery',
+            message: `Recovered existing file ${fileName}`,
+          },
+        });
+
+        return match.id;
+      }
+
+      // ❌ Corrupt Fragment — Delete
+      await this.rateGovernor.throttle();
+      await this.destinationDrive.files.delete({ fileId: match.id });
+
+      await this.prisma.transferEvent.create({
+        data: {
+          jobId: item.jobId,
+          type: 'automatic.recovery',
+          message: `Deleted corrupt fragment for ${fileName}`,
+        },
+      });
+    }
+
+    // ============================================================
+    // 3️⃣ SAFE COPY
+    // ============================================================
 
     let attempt = 0;
 
     while (attempt < this.MAX_RETRIES) {
       try {
         await this.rateGovernor.throttle();
+
         const copied = await this.destinationDrive.files.copy({
           fileId: sourceFileId,
           requestBody: {
