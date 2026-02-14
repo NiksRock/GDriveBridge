@@ -1,9 +1,7 @@
 {
   "name": "GDriveBridge",
   "version": "1.0.0",
-  "description": "",
   "private": true,
-  "type": "module",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -14,9 +12,6 @@
     "clean": "powershell -ExecutionPolicy Bypass -File clean.ps1",
     "reset": "pnpm run clean && pnpm install"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",

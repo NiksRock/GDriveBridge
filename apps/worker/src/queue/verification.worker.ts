@@ -3,6 +3,7 @@
 // Satisfies:
 // - DEFT §9 (Checksum + Count Verification Before Delete)
 // - DEFT §7 (Integrity enforcement)
+// - DEFT §6 (Cancel must override delete)
 // ============================================================
 
 import { Worker } from 'bullmq';
@@ -62,7 +63,7 @@ new Worker(
     // ============================================================
 
     for (const item of transfer.items) {
-      // Skip folders (no checksum)
+      // Skip folders and unsupported types
       if (
         item.mimeType === 'application/vnd.google-apps.folder' ||
         !item.checksum ||
@@ -94,6 +95,23 @@ new Worker(
     }
 
     console.log('✅ Verification passed (count + checksum):', transferId);
+
+    // ============================================================
+    // FINAL STATUS RE-CHECK (Race Condition Protection)
+    // Satisfies: DEFT §6 + §9
+    // ============================================================
+
+    const latest = await prisma.transferJob.findUnique({
+      where: { id: transferId },
+      select: { status: true },
+    });
+
+    if (!latest || latest.status !== 'COMPLETED') {
+      console.warn(
+        `🛑 Delete queue blocked — transfer no longer completed (status=${latest?.status})`,
+      );
+      return;
+    }
 
     // ============================================================
     // Enqueue Delete Tasks

@@ -1,12 +1,6 @@
 // ============================================================
 // GDriveBridge Worker — Enterprise Locked Execution Engine
 // FIXED VERSION
-//
-// Fixes:
-// - Proper lock extension inside loop
-// - Correct final status logic
-// - No invalid top-level await
-// - Uses RateGovernor (correct file)
 // ============================================================
 
 import { Worker, Queue } from 'bullmq';
@@ -59,10 +53,7 @@ new Worker(
     }
 
     const acquired = await accountLock.acquire(transfer.destinationAccountId, transferId);
-
-    if (!acquired) {
-      throw new Error('Account busy — retry later');
-    }
+    if (!acquired) throw new Error('Account busy — retry later');
 
     try {
       await prisma.transferJob.update({
@@ -90,7 +81,6 @@ new Worker(
       });
 
       for (const item of pendingItems) {
-        // 🔥 Extend lock every iteration (critical fix)
         await accountLock.extend(transfer.destinationAccountId, transferId);
 
         const latest = await prisma.transferJob.findUnique({
@@ -199,12 +189,11 @@ new Worker(
 
       if (!fresh) return;
 
-      // ✅ Correct final status logic
+      // 🔥 FIXED FINAL STATUS LOGIC
       let finalStatus: TransferStatus;
 
       if (fresh.failedItems > 0) {
-        finalStatus =
-          fresh.completedItems > 0 ? TransferStatus.COMPLETED : TransferStatus.FAILED;
+        finalStatus = TransferStatus.FAILED;
       } else {
         finalStatus = TransferStatus.COMPLETED;
       }

@@ -1,30 +1,52 @@
-# dependencies
+# =========================
+# Dependencies
+# =========================
 node_modules
 .pnpm-store
 
-# build outputs
+# =========================
+# Build Outputs
+# =========================
 dist
 build
+apps/**/dist
+packages/**/dist
 
-# caches
+# =========================
+# Turbo / Vite Cache
+# =========================
 .turbo
 .vite
+.next
 
-# env
+# =========================
+# Environment Files
+# =========================
 .env
+.env.*
+apps/**/.env
+packages/**/.env
 
-# logs
-*.log
-
-# temp debug outputs
-structure.txt
-clean-structure.txt
-packages/**/dist
-apps/**/dist
+# =========================
+# Database Files
+# =========================
 apps/api/prisma/dev.db
 apps/api/prisma/dev.db-journal
-.env.*
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# OS Files
+# =========================
 .DS_Store
 Thumbs.db
-.next 
+
+# =========================
+# Debug Dumps
+# =========================
+structure.txt
+clean-structure.txt
 project_source_dump.txt

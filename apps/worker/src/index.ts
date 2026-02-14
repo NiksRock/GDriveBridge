@@ -2,11 +2,20 @@ import 'dotenv/config';
 
 console.log('🚀 Starting GDriveBridge Worker...');
 
+// Core transfer worker
 import './queue/worker';
+
+// Move mode verification
+import './queue/verification.worker';
+
+// Safe delete worker
+import './queue/delete.worker';
+
+// Quota resume worker
+import './queue/quota-resume.worker';
 
 /**
  * Global crash safety
- * Prevent silent worker death.
  */
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception in Worker:', err);

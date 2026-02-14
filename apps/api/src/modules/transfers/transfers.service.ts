@@ -58,9 +58,9 @@ export class TransfersService {
       mode: dto.mode,
     });
 
-    if (!preScan.canStart) {
+    if (preScan.riskFlags.includes('DESTINATION_ITEM_LIMIT_BLOCK')) {
       throw new ForbiddenException({
-        message: 'Transfer blocked by Pre-Scan risk analysis',
+        message: 'Destination folder exceeds safe 500k item limit',
         riskFlags: preScan.riskFlags,
         warnings: preScan.warnings,
       });

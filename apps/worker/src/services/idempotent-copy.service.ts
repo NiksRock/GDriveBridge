@@ -71,20 +71,28 @@ export class IdempotentCopyService {
   // Atomic Quota Enforcement
   // ============================================================
 
+  // ============================================================
+  // Atomic Quota Enforcement
+  // Prevents race condition across concurrent workers
+  // Satisfies: DEFT §11.2
+  // ============================================================
+
   private async incrementAndValidateQuota(transferId: string, bytes: bigint) {
     await this.ensureDailyReset();
 
-    const account = await this.prisma.googleAccount.findUnique({
-      where: { id: this.accountId },
-      select: { dailyBytesTransferred: true },
+    const updated = await this.prisma.googleAccount.updateMany({
+      where: {
+        id: this.accountId,
+        dailyBytesTransferred: {
+          lt: this.DAILY_LIMIT_BYTES - bytes,
+        },
+      },
+      data: {
+        dailyBytesTransferred: { increment: bytes },
+      },
     });
 
-    if (!account) throw new Error('Account not found');
-
-    const current = account.dailyBytesTransferred ?? BigInt(0);
-    const projected = current + bytes;
-
-    if (projected > this.DAILY_LIMIT_BYTES) {
+    if (updated.count === 0) {
       await this.prisma.transferJob.update({
         where: { id: transferId },
         data: {
@@ -93,27 +101,19 @@ export class IdempotentCopyService {
         },
       });
 
-      // 🔥 Schedule Resume After 24 Hours
       const { quotaResumeQueue } = await import('../queue/quota-resume.queue');
 
       await quotaResumeQueue.add(
         QUEUE_NAMES.QUOTA_RESUME,
         { transferId },
         {
-          delay: 24 * 60 * 60 * 1000, // 24 hours
-          jobId: `quota-resume-${transferId}`, // prevent duplicates
+          delay: 24 * 60 * 60 * 1000,
+          jobId: `quota-resume-${transferId}`,
         },
       );
 
       throw new Error('Daily 700GB quota exceeded — transfer auto-paused');
     }
-
-    await this.prisma.googleAccount.update({
-      where: { id: this.accountId },
-      data: {
-        dailyBytesTransferred: { increment: bytes },
-      },
-    });
   }
 
   // ============================================================

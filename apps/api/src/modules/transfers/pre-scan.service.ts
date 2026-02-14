@@ -19,10 +19,6 @@ export class PreScanService {
     private readonly cryptoService: CryptoService,
   ) {}
 
-  // ============================================================
-  // Destination Ceiling Thresholds (DEFT §11.3)
-  // ============================================================
-
   private readonly DEST_WARNING_THRESHOLD = 480_000;
   private readonly DEST_BLOCK_THRESHOLD = 495_000;
 
@@ -100,47 +96,37 @@ export class PreScanService {
     const totalItems = totalFiles + totalFolders;
 
     // ============================================================
-    // DESTINATION SUBTREE COUNT (DEFT §11.3)
+    // DESTINATION ROOT CHILD COUNT ONLY
+    // Accurate 500k enforcement (Google limit is per-folder children)
     // ============================================================
 
     let destinationItemCount = 0;
+    let pageToken: string | undefined = undefined;
 
-    const countDestinationRecursive = async (folderId: string): Promise<void> => {
-      let pageToken: string | undefined = undefined;
+    do {
+      const res = await destinationDrive.files.list({
+        q: `'${dto.destinationFolderId}' in parents and trashed=false`,
+        fields: 'nextPageToken, files(id)',
+        pageSize: 1000,
+        pageToken,
+      });
 
-      do {
-        const res = await destinationDrive.files.list({
-          q: `'${folderId}' in parents and trashed=false`,
-          fields: 'nextPageToken, files(id,mimeType)',
-          pageSize: 1000,
-          pageToken,
-        });
+      const files = res.data.files ?? [];
+      destinationItemCount += files.length;
 
-        const files = res.data.files ?? [];
-        destinationItemCount += files.length;
+      if (destinationItemCount >= this.DEST_BLOCK_THRESHOLD) {
+        break;
+      }
 
-        for (const file of files) {
-          if (file.mimeType === 'application/vnd.google-apps.folder' && file.id) {
-            await countDestinationRecursive(file.id);
-          }
-        }
+      pageToken = res.data.nextPageToken ?? undefined;
+    } while (pageToken);
 
-        pageToken = res.data.nextPageToken ?? undefined;
-      } while (pageToken);
-    };
-
-    await countDestinationRecursive(dto.destinationFolderId);
-
-    const projectedTotal = destinationItemCount + totalItems;
-
-    // ============================================================
-    // RISK ANALYSIS
-    // ============================================================
+    // 🔥 FIX: Only top-level inserts affect root folder count
+    const projectedTotal = destinationItemCount + dto.sourceFileIds.length;
 
     const riskFlags: string[] = [];
     const warnings: string[] = [];
 
-    // 500k Projection
     if (projectedTotal >= this.DEST_BLOCK_THRESHOLD) {
       riskFlags.push('DESTINATION_ITEM_LIMIT_BLOCK');
       warnings.push(
@@ -153,7 +139,6 @@ export class PreScanService {
       );
     }
 
-    // Daily quota projection
     const dailyBytes = destinationAccount.dailyBytesTransferred ?? BigInt(0);
     const projectedBytes = dailyBytes + totalBytes;
     const GB = BigInt(1024 ** 3);
@@ -176,10 +161,6 @@ export class PreScanService {
       canStart: !riskFlags.includes('DESTINATION_ITEM_LIMIT_BLOCK'),
     };
   }
-
-  // ============================================================
-  // Drive Client Builder
-  // ============================================================
 
   private buildDriveClient(refreshTokenEncrypted: string): drive_v3.Drive {
     const oauth = new google.auth.OAuth2(
