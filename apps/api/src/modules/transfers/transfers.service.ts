@@ -83,7 +83,7 @@ export class TransfersService {
      * 5️⃣ Enrich selected items
      */
     const enrichedItems: Array<{
-      googleFileId: string;
+      sourceFileId: string;
       fileName: string;
       mimeType?: string | null;
       sizeBytes?: bigint | null;
@@ -97,7 +97,7 @@ export class TransfersService {
       });
 
       enrichedItems.push({
-        googleFileId: meta.data.id!,
+        sourceFileId: meta.data.id!,
         fileName: meta.data.name ?? 'unknown',
         mimeType: meta.data.mimeType,
         sizeBytes: meta.data.size ? BigInt(meta.data.size) : null,

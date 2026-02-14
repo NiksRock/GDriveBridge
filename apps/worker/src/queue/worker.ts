@@ -1,36 +1,28 @@
 // ============================================================
-// GDriveBridge Worker v4 (Enterprise Correct + Realtime)
+// GDriveBridge Worker v5 (Enterprise + Cancellation Safe)
 // Implements:
-// - DEFT §7 Exactly-Once Idempotency
-// - DEFT §11.1 Rate Governor (2.5 writes/sec)
-// - DEFT §6 Crash-Safe Resumability
-// - DEFT §9 Move Mode Trigger (Verification Queue)
-// - DEFT §10 Real-Time Progress Publishing
+// - Exactly-Once
+// - 2.5 writes/sec
+// - Crash-safe resume
+// - Move verification
+// - Real-time progress
+// - Immediate cancellation support
 // ============================================================
 
 import { Worker, Queue } from 'bullmq';
-import { QUEUE_NAMES, redisConfig } from '@gdrivebridge/shared';
+import { QUEUE_NAMES, redisConfig, TransferStatus } from '@gdrivebridge/shared';
 import { prisma } from '../db';
 
 import Redis from 'ioredis';
-
 import { GoogleDriveService } from '../services/google-drive.service';
 import { IdempotentCopyService } from '../services/idempotent-copy.service';
 
 console.log('🚀 Worker started...');
 
-// ============================================================
-// Redis Publisher for Progress Events (DEFT §10)
-// ============================================================
-
 const progressPublisher = new Redis({
   host: process.env.REDIS_HOST ?? 'localhost',
   port: Number(process.env.REDIS_PORT ?? 6379),
 });
-
-// ============================================================
-// Verification Queue (Move Mode) (DEFT §9)
-// ============================================================
 
 const verificationQueue = new Queue(QUEUE_NAMES.TRANSFER_EVENTS, {
   connection: redisConfig,
@@ -44,7 +36,7 @@ new Worker(
     console.log('🔥 Processing transfer:', transferId);
 
     // ============================================================
-    // 1️⃣ Fetch Transfer
+    // 1️⃣ Load Transfer
     // ============================================================
 
     const transfer = await prisma.transferJob.findUnique({
@@ -57,29 +49,24 @@ new Worker(
 
     if (!transfer) throw new Error('Transfer not found');
 
-    // Abort if cancelled
-    if (transfer.status === 'CANCELLED') {
-      console.log('⛔ Transfer cancelled:', transferId);
+    if (transfer.status === TransferStatus.CANCELLED) {
+      console.log('⛔ Already cancelled before start');
       return;
     }
 
     // ============================================================
-    // 2️⃣ Mark RUNNING (if not already)
+    // 2️⃣ Mark RUNNING
     // ============================================================
 
-    if (transfer.status !== 'RUNNING') {
+    if (transfer.status !== TransferStatus.RUNNING) {
       await prisma.transferJob.update({
         where: { id: transferId },
         data: {
-          status: 'RUNNING',
+          status: TransferStatus.RUNNING,
           startedAt: transfer.startedAt ?? new Date(),
         },
       });
     }
-
-    // ============================================================
-    // 3️⃣ Build Destination Drive Client
-    // ============================================================
 
     const destinationDrive = GoogleDriveService.getDriveClient(
       transfer.destinationAccount.refreshTokenEncrypted,
@@ -88,7 +75,7 @@ new Worker(
     const copyService = new IdempotentCopyService(prisma, destinationDrive);
 
     // ============================================================
-    // 4️⃣ Query Pending Items (Resumable Pattern)
+    // 3️⃣ Resumable Pending Query
     // ============================================================
 
     const pendingItems = await prisma.transferItem.findMany({
@@ -100,6 +87,29 @@ new Worker(
     });
 
     for (const item of pendingItems) {
+      // ============================================================
+      // 🔥 REAL-TIME CANCELLATION CHECK
+      // ============================================================
+
+      const latestState = await prisma.transferJob.findUnique({
+        where: { id: transferId },
+        select: { status: true },
+      });
+
+      if (latestState?.status === TransferStatus.CANCELLED) {
+        console.log('⛔ Transfer cancelled mid-execution:', transferId);
+
+        await prisma.transferEvent.create({
+          data: {
+            jobId: transferId,
+            type: 'transfer.cancelled',
+            message: 'Transfer stopped by user',
+          },
+        });
+
+        return; // Immediately stop worker loop
+      }
+
       try {
         // Mark item RUNNING
         await prisma.transferItem.update({
@@ -121,10 +131,7 @@ new Worker(
           },
         });
 
-        // ============================================================
-        // Publish Real-Time Progress (DEFT §10)
-        // ============================================================
-
+        // Publish progress
         await progressPublisher.publish(
           QUEUE_NAMES.TRANSFER_PROGRESS,
           JSON.stringify({
@@ -164,15 +171,24 @@ new Worker(
     }
 
     // ============================================================
-    // 5️⃣ Determine Final Status
+    // 4️⃣ Final Status Resolution
     // ============================================================
 
     const fresh = await prisma.transferJob.findUnique({
       where: { id: transferId },
     });
 
+    if (!fresh) return;
+
+    if (fresh.status === TransferStatus.CANCELLED) {
+      console.log('⛔ Transfer was cancelled before completion');
+      return;
+    }
+
     const finalStatus =
-      fresh?.failedItems && fresh.failedItems > 0 ? 'FAILED' : 'COMPLETED';
+      fresh.failedItems && fresh.failedItems > 0
+        ? TransferStatus.FAILED
+        : TransferStatus.COMPLETED;
 
     await prisma.transferJob.update({
       where: { id: transferId },
@@ -185,10 +201,10 @@ new Worker(
     console.log(`🎉 Transfer finished: ${transferId}`);
 
     // ============================================================
-    // 6️⃣ Trigger Move Mode Verification (DEFT §9)
+    // 5️⃣ Move Mode Verification Trigger
     // ============================================================
 
-    if (finalStatus === 'COMPLETED' && transfer.mode === 'MOVE') {
+    if (finalStatus === TransferStatus.COMPLETED && transfer.mode === 'MOVE') {
       await verificationQueue.add(QUEUE_NAMES.TRANSFER_EVENTS, { transferId });
 
       console.log('🔍 Verification queued:', transferId);
