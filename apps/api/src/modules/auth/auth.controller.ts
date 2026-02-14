@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { CryptoService } from '../../security/crypto.service';
 import { GoogleOAuthService } from './google-oauth.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuthService } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
@@ -10,6 +11,7 @@ export class AuthController {
     private readonly googleOAuth: GoogleOAuthService,
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
+    private readonly authService: AuthService,
   ) {}
 
   /**
@@ -66,10 +68,9 @@ export class AuthController {
      * Later: userId must come from session/JWT, not query/state.
      */
     const user = await this.prisma.user.upsert({
-      where: { id: userId },
+      where: { email: profile.email },
       update: {},
       create: {
-        id: userId,
         email: profile.email,
       },
     });
@@ -94,9 +95,15 @@ export class AuthController {
       },
     });
 
+    const token = this.authService.signToken({
+      id: user.id,
+      email: user.email,
+    });
+
     return {
       message: '✅ Google Account Connected Successfully',
       accountId: account.id,
+      accessToken: token,
     };
   }
 }

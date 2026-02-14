@@ -1,4 +1,6 @@
 import 'dotenv/config';
+import { JwtAuthGuard } from './auth/jwt.guard';
+import { JwtService } from '@nestjs/jwt';
 
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
@@ -7,7 +9,8 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
+  const jwtService = app.get(JwtService);
+  app.useGlobalGuards(new JwtAuthGuard(jwtService));
   /**
    * Enable CORS for frontend access
    */

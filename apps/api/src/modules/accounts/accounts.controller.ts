@@ -1,25 +1,18 @@
-import { Controller, Get, Query } from '@nestjs/common';
-
+import { Controller, Get, Req } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { Request } from 'express';
 
 @Controller('accounts')
 export class AccountsController {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * List all connected Google accounts for a user
-   *
-   * GET /api/accounts?userId=demo-user
-   */
   @Get()
-  async list(@Query('userId') userId: string) {
+  async list(@Req() req: Request & { user: { id: string } }) {
+    const userId = req.user.id;
+
     const accounts = await this.prisma.googleAccount.findMany({
-      where: {
-        userId,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
       select: {
         id: true,
         email: true,

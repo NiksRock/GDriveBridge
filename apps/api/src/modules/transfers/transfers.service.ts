@@ -17,24 +17,16 @@ export class TransfersService {
     private readonly cryptoService: CryptoService,
   ) {}
 
-  async createTransfer(dto: CreateTransferDto) {
-    /**
-     * 1️⃣ Ensure user exists (TEMP)
-     */
-    const user = await this.prisma.user.upsert({
-      where: { id: dto.userId },
-      update: {},
-      create: {
-        id: dto.userId,
-        email: dto.userId,
-      },
+  async createTransfer(userId: string, dto: CreateTransferDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
     });
 
-    /**
-     * 2️⃣ Validate source + destination accounts
-     */
+    if (!user) {
+      throw new ForbiddenException('User not found');
+    }
     const sourceAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.sourceAccountId, userId: user.id },
+      where: { id: dto.sourceAccountId, userId },
     });
 
     if (!sourceAccount) {
@@ -53,8 +45,7 @@ export class TransfersService {
     // 🔒 3️⃣ MANDATORY Pre-Scan Enforcement (DEFT §12)
     // ============================================================
 
-    const preScan = await this.preScanService.runPreScan({
-      userId: dto.userId,
+    const preScan = await this.preScanService.runPreScan(userId, {
       sourceAccountId: dto.sourceAccountId,
       destinationAccountId: dto.destinationAccountId,
       sourceFileIds: dto.sourceFileIds,
@@ -167,8 +158,9 @@ export class TransfersService {
     return transfer;
   }
 
-  async listTransfers() {
+  async listTransfers(userId: string) {
     const transfers = await this.prisma.transferJob.findMany({
+      where: { userId },
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
@@ -185,9 +177,9 @@ export class TransfersService {
     }));
   }
 
-  async getTransferById(id: string) {
-    const transfer = await this.prisma.transferJob.findUnique({
-      where: { id },
+  async getTransferById(userId: string, id: string) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: { id, userId },
       include: { items: true, events: true },
     });
 

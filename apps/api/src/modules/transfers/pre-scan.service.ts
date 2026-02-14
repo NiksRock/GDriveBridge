@@ -19,9 +19,9 @@ export class PreScanService {
     private readonly cryptoService: CryptoService,
   ) {}
 
-  async runPreScan(dto: PreScanDto) {
+  async runPreScan(userId: string, dto: PreScanDto) {
     const sourceAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.sourceAccountId, userId: dto.userId },
+      where: { id: dto.sourceAccountId, userId: userId },
     });
 
     if (!sourceAccount) {
@@ -29,7 +29,7 @@ export class PreScanService {
     }
 
     const destinationAccount = await this.prisma.googleAccount.findFirst({
-      where: { id: dto.destinationAccountId, userId: dto.userId },
+      where: { id: dto.destinationAccountId, userId: userId },
     });
 
     if (!destinationAccount) {
