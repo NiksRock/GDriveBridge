@@ -9,9 +9,9 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
-    "clean": "rimraf node_modules apps/**/node_modules packages/**/node_modules dist build .turbo",
-    "reset": "pnpm run clean && pnpm install",
-    "prepare": "husky"
+    "prepare": "husky",
+    "clean": "powershell -ExecutionPolicy Bypass -File clean.ps1",
+    "reset": "pnpm run clean && pnpm install"
   },
   "keywords": [],
   "author": "",

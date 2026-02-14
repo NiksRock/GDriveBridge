@@ -5,10 +5,13 @@
     "rootDir": "src",
 
     "declaration": true,
-    "composite": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
 
-    "module": "NodeNext",
-    "target": "ES2022"
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+
+    "composite": true
   },
   "include": ["src"]
 }
