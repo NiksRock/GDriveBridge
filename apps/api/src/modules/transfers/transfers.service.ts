@@ -1,5 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 
+import { google } from 'googleapis';
+
 import { QUEUE_NAMES, TransferStatus, ItemStatus } from '@gdrivebridge/shared';
 
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,12 +12,9 @@ import { transferQueue } from '../../queue/transfer.queue';
 export class TransfersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /**
-   * POST: Create transfer + enqueue job
-   */
   async createTransfer(dto: CreateTransferDto) {
     /**
-     * ✅ TEMP: Ensure user exists (until auth system is real)
+     * ✅ TEMP user ensure exists
      */
     const user = await this.prisma.user.upsert({
       where: { id: dto.userId },
@@ -27,43 +26,73 @@ export class TransfersService {
     });
 
     /**
-     * ✅ Validate Source Account belongs to user
+     * ✅ Validate source + destination accounts
      */
     const sourceAccount = await this.prisma.googleAccount.findFirst({
-      where: {
-        id: dto.sourceAccountId,
-        userId: user.id,
-      },
+      where: { id: dto.sourceAccountId, userId: user.id },
     });
 
     if (!sourceAccount) {
       throw new ForbiddenException('Invalid source account');
     }
 
-    if (sourceAccount.userId !== user.id) {
-      throw new ForbiddenException('Source account does not belong to this user');
-    }
-
-    /**
-     * ✅ Validate Destination Account belongs to user
-     */
     const destinationAccount = await this.prisma.googleAccount.findFirst({
-      where: {
-        id: dto.destinationAccountId,
-        userId: user.id,
-      },
+      where: { id: dto.destinationAccountId, userId: user.id },
     });
 
     if (!destinationAccount) {
       throw new ForbiddenException('Invalid destination account');
     }
 
-    if (destinationAccount.userId !== user.id) {
-      throw new ForbiddenException('Destination account does not belong to this user');
+    /**
+     * ✅ Create Drive client for metadata lookup
+     */
+    const oauth = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID,
+      process.env.GOOGLE_CLIENT_SECRET,
+      process.env.GOOGLE_REDIRECT_URI,
+    );
+
+    oauth.setCredentials({
+      refresh_token: sourceAccount.refreshToken,
+    });
+
+    const drive = google.drive({
+      version: 'v3',
+      auth: oauth,
+    });
+
+    /**
+     * ✅ FIX: Explicitly typed array (prevents never[])
+     */
+    const enrichedItems: Array<{
+      googleFileId: string;
+      fileName: string;
+      mimeType?: string | null;
+      sizeBytes?: bigint | null;
+      status: ItemStatus;
+    }> = [];
+
+    /**
+     * ✅ Fetch metadata for each selected file/folder
+     */
+    for (const fileId of dto.sourceFileIds) {
+      const meta = await drive.files.get({
+        fileId,
+        fields: 'id,name,mimeType,size',
+      });
+
+      enrichedItems.push({
+        googleFileId: meta.data.id!,
+        fileName: meta.data.name ?? 'unknown',
+        mimeType: meta.data.mimeType,
+        sizeBytes: meta.data.size ? BigInt(meta.data.size) : null,
+        status: ItemStatus.PENDING,
+      });
     }
 
     /**
-     * ✅ Create Transfer
+     * ✅ Create Transfer + Items
      */
     const transfer = await this.prisma.transfer.create({
       data: {
@@ -77,14 +106,10 @@ export class TransfersService {
         mode: dto.mode,
         status: TransferStatus.PENDING,
 
-        totalItems: dto.sourceFileIds.length,
+        totalItems: enrichedItems.length,
 
         items: {
-          create: dto.sourceFileIds.map((fileId) => ({
-            googleFileId: fileId,
-            fileName: 'unknown',
-            status: ItemStatus.PENDING,
-          })),
+          create: enrichedItems,
         },
 
         events: {
@@ -118,9 +143,6 @@ export class TransfersService {
     return transfer;
   }
 
-  /**
-   * GET: List all transfers
-   */
   async listTransfers() {
     const transfers = await this.prisma.transfer.findMany({
       orderBy: { createdAt: 'desc' },
@@ -134,27 +156,18 @@ export class TransfersService {
       totalItems: t.totalItems,
       completedItems: t.completedItems,
       failedItems: t.failedItems,
-      createdAt: t.createdAt,
       progress:
         t.totalItems === 0 ? 0 : Math.round((t.completedItems / t.totalItems) * 100),
     }));
   }
 
-  /**
-   * GET: Fetch single transfer by ID
-   */
   async getTransferById(id: string) {
     const transfer = await this.prisma.transfer.findUnique({
       where: { id },
-      include: {
-        items: true,
-        events: true,
-      },
+      include: { items: true, events: true },
     });
 
-    if (!transfer) {
-      throw new NotFoundException('Transfer not found');
-    }
+    if (!transfer) throw new NotFoundException('Transfer not found');
 
     return {
       ...transfer,

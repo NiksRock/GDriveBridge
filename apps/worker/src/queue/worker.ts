@@ -2,6 +2,9 @@ import { Worker } from 'bullmq';
 import { QUEUE_NAMES, redisConfig } from '@gdrivebridge/shared';
 import { prisma } from '../db';
 
+import { GoogleDriveService } from '../services/google-drive.service';
+import { DriveTransferEngine } from '../services/drive-transfer.service';
+
 console.log('🚀 Worker started...');
 
 new Worker(
@@ -12,7 +15,32 @@ new Worker(
     console.log('🔥 Processing transfer:', transferId);
 
     /**
-     * 1. Mark transfer as running
+     * 1. Fetch transfer + accounts
+     */
+    const transfer = await prisma.transfer.findUnique({
+      where: { id: transferId },
+      include: {
+        sourceAccount: true,
+        destinationAccount: true,
+        items: true,
+      },
+    });
+
+    if (!transfer) throw new Error('Transfer not found');
+
+    /**
+     * 2. Create Drive clients
+     */
+    const sourceDrive = GoogleDriveService.getDriveClient(
+      transfer.sourceAccount.refreshToken,
+    );
+
+    const destinationDrive = GoogleDriveService.getDriveClient(
+      transfer.destinationAccount.refreshToken,
+    );
+
+    /**
+     * 3. Mark transfer running
      */
     await prisma.transfer.update({
       where: { id: transferId },
@@ -23,118 +51,101 @@ new Worker(
     });
 
     /**
-     * 2. Fetch pending items
+     * 4. Transfer Engine
      */
-    const items = await prisma.transferItem.findMany({
-      where: {
-        transferId,
-        status: 'pending',
-      },
-    });
-
-    console.log(`📦 Found ${items.length} pending items`);
-
-    let completedCount = 0;
-    let failedCount = 0;
+    const engine = new DriveTransferEngine(
+      prisma,
+      sourceDrive,
+      destinationDrive,
+      transferId,
+    );
 
     /**
-     * 3. Process items one-by-one
+     * 5. Process root selected items
      */
-    for (const item of items) {
+    for (const item of transfer.items) {
+      if (item.status !== 'pending') continue;
+
       try {
-        console.log('➡️ Processing item:', item.googleFileId);
+        if (item.mimeType === 'application/vnd.google-apps.folder') {
+          await engine.copyFolderRecursive(
+            item.googleFileId,
+            transfer.destinationFolderId,
+            item.fileName,
+          );
+        } else {
+          await GoogleDriveService.copyFile(
+            sourceDrive,
+            destinationDrive,
+            item.googleFileId,
+            transfer.destinationFolderId,
+          );
 
-        /**
-         * ✅ Simulated copy work (later replace with Drive API)
-         */
-        await new Promise((r) => setTimeout(r, 500));
+          await prisma.transfer.update({
+            where: { id: transferId },
+            data: {
+              completedItems: { increment: 1 },
+            },
+          });
+        }
 
-        /**
-         * Mark item completed
-         */
         await prisma.transferItem.update({
           where: { id: item.id },
-          data: {
-            status: 'completed',
-            updatedAt: new Date(),
-          },
+          data: { status: 'completed' },
         });
-
-        completedCount++;
-
-        /**
-         * Increment transfer progress live
-         */
-        await prisma.transfer.update({
-          where: { id: transferId },
-          data: {
-            completedItems: completedCount,
-          },
-        });
-
-        /**
-         * Log event
-         */
-        await prisma.transferEvent.create({
-          data: {
-            transferId,
-            type: 'item.completed',
-            message: `Completed file ${item.googleFileId}`,
-          },
-        });
-
-        console.log('✅ Completed:', item.googleFileId);
       } catch (err: unknown) {
-        // Changed 'any' to 'unknown' to fix lint error
-        failedCount++;
+        let message = 'Unknown error';
 
-        // Type-safe error message extraction
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        if (err instanceof Error) {
+          message = err.message;
+        }
 
-        /**
-         * Mark item failed
-         */
         await prisma.transferItem.update({
           where: { id: item.id },
           data: {
             status: 'failed',
-            errorMessage,
+            errorMessage: message,
           },
         });
 
-        /**
-         * Log failure event
-         */
+        await prisma.transfer.update({
+          where: { id: transferId },
+          data: {
+            failedItems: { increment: 1 },
+          },
+        });
+
         await prisma.transferEvent.create({
           data: {
             transferId,
             type: 'item.failed',
-            message: `Failed file ${item.googleFileId}: ${errorMessage}`,
+            message: `Failed copying ${item.googleFileId}: ${message}`,
           },
         });
 
-        console.log('❌ Failed:', item.googleFileId, errorMessage);
+        console.log('❌ Copy failed:', item.googleFileId, message);
       }
     }
 
     /**
-     * 4. Final transfer status
-     * If even one item fails, the overall transfer is marked as failed
+     * 6. Final status
      */
-    const finalStatus = failedCount > 0 ? 'failed' : 'completed';
+    const fresh = await prisma.transfer.findUnique({
+      where: { id: transferId },
+    });
+
+    const finalStatus =
+      fresh?.failedItems && fresh.failedItems > 0 ? 'failed' : 'completed';
 
     await prisma.transfer.update({
       where: { id: transferId },
       data: {
         status: finalStatus,
-        failedItems: failedCount,
         finishedAt: new Date(),
       },
     });
 
-    console.log(
-      `🎉 Transfer finished: ${transferId} (completed=${completedCount}, failed=${failedCount})`,
-    );
+    console.log(`🎉 Transfer finished: ${transferId}`);
   },
   {
     connection: redisConfig,
