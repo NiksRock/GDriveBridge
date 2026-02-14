@@ -5,13 +5,5 @@
     "bradlc.vscode-tailwindcss",
     "usernamehw.errorlens",
     "eamodio.gitlens"
-  ],
-  "editor.formatOnSave": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
-
-  "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true
-  },
-
-  "tailwindCSS.experimental.classRegex": [["cn\\(([^)]*)\\)", "\"([^\"]*)\""]]
+  ]
 }

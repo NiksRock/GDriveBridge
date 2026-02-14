@@ -1,19 +1,26 @@
 import { z } from 'zod';
 
 /**
- * Request payload for creating a new transfer session
+ * Transfer request payload validation schema
  */
 export const CreateTransferSchema = z.object({
-  userId: z.string(),
+  /**
+   * ✅ TEMP MVP: userId comes from request body
+   * Later this will come from OAuth session
+   */
+  userId: z.string().min(1),
 
-  sourceAccountId: z.string(),
-  destinationAccountId: z.string(),
+  sourceAccountId: z.string().min(1),
+  destinationAccountId: z.string().min(1),
 
-  destinationFolderId: z.string(),
+  destinationFolderId: z.string().min(1),
 
-  sourceFileIds: z.array(z.string().min(1)),
+  mode: z.enum(['copy', 'move']),
 
-  mode: z.enum(['copy', 'move']).default('copy'),
+  sourceFileIds: z.array(z.string().min(1)).min(1),
 });
 
+/**
+ * TypeScript DTO type
+ */
 export type CreateTransferDto = z.infer<typeof CreateTransferSchema>;

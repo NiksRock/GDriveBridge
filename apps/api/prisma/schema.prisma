@@ -23,20 +23,16 @@ model GoogleAccount {
   email     String
   avatarUrl String?
 
-  accessToken  String?
   refreshToken String
-  expiresAt    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  sourceTransfers      Transfer[] @relation("SourceAccount")
-  destinationTransfers Transfer[] @relation("DestinationAccount")
-
   @@unique([userId, email])
 }
+
 
 model Transfer {
   id     String @id @default(uuid())

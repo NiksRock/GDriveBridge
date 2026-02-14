@@ -1,9 +1,8 @@
 {
-  "recommendations": [
-    "esbenp.prettier-vscode",
-    "dbaeumer.vscode-eslint",
-    "bradlc.vscode-tailwindcss",
-    "usernamehw.errorlens",
-    "eamodio.gitlens"
-  ]
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "tailwindCSS.experimental.classRegex": [["cn\\(([^)]*)\\)", "\"([^\"]*)\""]]
 }

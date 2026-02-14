@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
@@ -19,11 +20,13 @@
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
     "@nestjs/cli": "^11.0.16",
+    "@types/node": "^25.2.3",
     "@typescript-eslint/eslint-plugin": "^8.55.0",
     "@typescript-eslint/parser": "^8.55.0",
     "eslint": "8.57.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.5",
+    "eslint-plugin-react": "^7.37.5",
     "husky": "^9.0.0",
     "lint-staged": "^15.0.0",
     "prettier": "^3.3.0",
@@ -36,5 +39,18 @@
     "*.{ts,tsx,js,jsx,json,md}": [
       "prettier --write"
     ]
+  },
+  "dependencies": {
+    "googleapis": "^171.4.0"
+  },
+  "pipeline": {
+    "dev": {
+      "cache": false
+    },
+    "build": {
+      "dependsOn": [
+        "^build"
+      ]
+    }
   }
 }

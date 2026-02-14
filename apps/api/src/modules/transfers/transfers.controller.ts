@@ -1,29 +1,38 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
 
 import { TransfersService } from './transfers.service';
-import {
-  CreateTransferSchema,
-  type CreateTransferDto,
-} from './dto/create-transfer.dto';
+import { CreateTransferSchema, type CreateTransferDto } from './dto/create-transfer.dto';
 
 @Controller('transfers')
 export class TransfersController {
   constructor(private readonly transfersService: TransfersService) {}
 
   /**
-   * Create a new transfer job
-   *
    * POST /api/transfers
+   * Create a new transfer job
    */
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() body: CreateTransferDto) {
-    /**
-     * Validate request using Zod
-     * (Throws 400 automatically if invalid)
-     */
     const dto = CreateTransferSchema.parse(body);
-
     return this.transfersService.createTransfer(dto);
+  }
+
+  /**
+   * GET /api/transfers
+   * List all transfers (latest first)
+   */
+  @Get()
+  async list() {
+    return this.transfersService.listTransfers();
+  }
+
+  /**
+   * GET /api/transfers/:id
+   * Fetch transfer status + progress
+   */
+  @Get(':id')
+  async getOne(@Param('id') id: string) {
+    return this.transfersService.getTransferById(id);
   }
 }

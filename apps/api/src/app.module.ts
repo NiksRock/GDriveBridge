@@ -3,32 +3,18 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from './prisma/prisma.module';
 import { TransfersModule } from './modules/transfers/transfers.module';
 import { ConfigModule } from '@nestjs/config';
+import { AuthModule } from './modules/auth/auth.module';
+import { AccountsModule } from './modules/accounts/accounts.module';
 
 @Module({
   imports: [
-    /**
-     * Load environment variables globally
-     */
     ConfigModule.forRoot({
       isGlobal: true,
     }),
-
-    /**
-     * Database layer
-     */
     PrismaModule,
-
-    /**
-     * Transfers API module
-     */
+    AuthModule,
+    AccountsModule,
     TransfersModule,
-
-    /**
-     * Future modules:
-     * - AuthModule (Google OAuth)
-     * - AccountsModule
-     * - HistoryModule
-     */
   ],
 })
 export class AppModule {}
