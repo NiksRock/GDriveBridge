@@ -1,16 +1,18 @@
 export enum TransferStatus {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  PAUSED = 'paused',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  CANCELLED = 'cancelled',
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  AUTO_PAUSED_QUOTA = 'AUTO_PAUSED_QUOTA',
 }
 
 export enum ItemStatus {
-  PENDING = 'pending',
-  RUNNING = 'running',
-  COMPLETED = 'completed',
-  FAILED = 'failed',
-  SKIPPED = 'skipped',
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  SKIPPED = 'SKIPPED',
+  VERIFYING = 'VERIFYING',
 }

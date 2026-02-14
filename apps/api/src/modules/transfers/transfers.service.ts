@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
-
+import { PreScanService } from './pre-scan.service';
 import { google } from 'googleapis';
+import { CryptoService } from '../../security/crypto.service';
 
 import { QUEUE_NAMES, TransferStatus, ItemStatus } from '@gdrivebridge/shared';
 
@@ -10,11 +11,15 @@ import { transferQueue } from '../../queue/transfer.queue';
 
 @Injectable()
 export class TransfersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly preScanService: PreScanService,
+    private readonly cryptoService: CryptoService,
+  ) {}
 
   async createTransfer(dto: CreateTransferDto) {
     /**
-     * ✅ TEMP user ensure exists
+     * 1️⃣ Ensure user exists (TEMP)
      */
     const user = await this.prisma.user.upsert({
       where: { id: dto.userId },
@@ -26,7 +31,7 @@ export class TransfersService {
     });
 
     /**
-     * ✅ Validate source + destination accounts
+     * 2️⃣ Validate source + destination accounts
      */
     const sourceAccount = await this.prisma.googleAccount.findFirst({
       where: { id: dto.sourceAccountId, userId: user.id },
@@ -44,8 +49,29 @@ export class TransfersService {
       throw new ForbiddenException('Invalid destination account');
     }
 
+    // ============================================================
+    // 🔒 3️⃣ MANDATORY Pre-Scan Enforcement (DEFT §12)
+    // ============================================================
+
+    const preScan = await this.preScanService.runPreScan({
+      userId: dto.userId,
+      sourceAccountId: dto.sourceAccountId,
+      destinationAccountId: dto.destinationAccountId,
+      sourceFileIds: dto.sourceFileIds,
+      destinationFolderId: dto.destinationFolderId,
+      mode: dto.mode,
+    });
+
+    if (!preScan.canStart) {
+      throw new ForbiddenException({
+        message: 'Transfer blocked by Pre-Scan risk analysis',
+        riskFlags: preScan.riskFlags,
+        warnings: preScan.warnings,
+      });
+    }
+
     /**
-     * ✅ Create Drive client for metadata lookup
+     * 4️⃣ Create Drive client for metadata lookup
      */
     const oauth = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
@@ -54,7 +80,7 @@ export class TransfersService {
     );
 
     oauth.setCredentials({
-      refresh_token: sourceAccount.refreshToken,
+      refresh_token: this.cryptoService.decrypt(sourceAccount.refreshTokenEncrypted),
     });
 
     const drive = google.drive({
@@ -63,7 +89,7 @@ export class TransfersService {
     });
 
     /**
-     * ✅ FIX: Explicitly typed array (prevents never[])
+     * 5️⃣ Enrich selected items
      */
     const enrichedItems: Array<{
       googleFileId: string;
@@ -73,9 +99,6 @@ export class TransfersService {
       status: ItemStatus;
     }> = [];
 
-    /**
-     * ✅ Fetch metadata for each selected file/folder
-     */
     for (const fileId of dto.sourceFileIds) {
       const meta = await drive.files.get({
         fileId,
@@ -92,21 +115,23 @@ export class TransfersService {
     }
 
     /**
-     * ✅ Create Transfer + Items
+     * 6️⃣ Create Transfer + Persist Risk Metadata
+     * (DEFT §5 + §12)
      */
-    const transfer = await this.prisma.transfer.create({
+    const transfer = await this.prisma.transferJob.create({
       data: {
         userId: user.id,
-
         sourceAccountId: sourceAccount.id,
         destinationAccountId: destinationAccount.id,
-
         destinationFolderId: dto.destinationFolderId,
-
         mode: dto.mode,
         status: TransferStatus.PENDING,
 
         totalItems: enrichedItems.length,
+        totalBytes: BigInt(preScan.estimatedBytes),
+
+        riskFlags: preScan.riskFlags,
+        warnings: preScan.warnings,
 
         items: {
           create: enrichedItems,
@@ -115,11 +140,10 @@ export class TransfersService {
         events: {
           create: {
             type: 'created',
-            message: 'Transfer session created',
+            message: 'Transfer session created after successful Pre-Scan',
           },
         },
       },
-
       include: {
         items: true,
         events: true,
@@ -127,7 +151,7 @@ export class TransfersService {
     });
 
     /**
-     * ✅ Enqueue Worker Job
+     * 7️⃣ Enqueue Worker Job
      */
     await transferQueue.add(
       QUEUE_NAMES.TRANSFER,
@@ -144,7 +168,7 @@ export class TransfersService {
   }
 
   async listTransfers() {
-    const transfers = await this.prisma.transfer.findMany({
+    const transfers = await this.prisma.transferJob.findMany({
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
@@ -162,7 +186,7 @@ export class TransfersService {
   }
 
   async getTransferById(id: string) {
-    const transfer = await this.prisma.transfer.findUnique({
+    const transfer = await this.prisma.transferJob.findUnique({
       where: { id },
       include: { items: true, events: true },
     });

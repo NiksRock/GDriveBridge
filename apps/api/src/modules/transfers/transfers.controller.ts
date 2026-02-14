@@ -1,16 +1,21 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from '@nestjs/common';
-
+import { PreScanSchema, type PreScanDto } from './dto/pre-scan.dto';
+import { PreScanService } from './pre-scan.service';
 import { TransfersService } from './transfers.service';
 import { CreateTransferSchema, type CreateTransferDto } from './dto/create-transfer.dto';
 
 @Controller('transfers')
 export class TransfersController {
-  constructor(private readonly transfersService: TransfersService) {}
+  constructor(
+    private readonly transfersService: TransfersService,
+    private readonly preScanService: PreScanService,
+  ) {}
 
-  /**
-   * POST /api/transfers
-   * Create a new transfer job
-   */
+  @Post('pre-scan')
+  async preScan(@Body() body: PreScanDto) {
+    const dto = PreScanSchema.parse(body);
+    return this.preScanService.runPreScan(dto);
+  }
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() body: CreateTransferDto) {

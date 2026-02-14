@@ -1,0 +1,15 @@
+// ============================================================
+// SecurityModule
+// Satisfies: DEFT §4.9 Security & Compliance
+// Provides encryption utilities globally
+// ============================================================
+
+import { Global, Module } from '@nestjs/common';
+import { CryptoService } from './crypto.service';
+
+@Global()
+@Module({
+  providers: [CryptoService],
+  exports: [CryptoService],
+})
+export class SecurityModule {}

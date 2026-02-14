@@ -1,10 +1,11 @@
 import { google, drive_v3 } from 'googleapis';
+import { Crypto } from '../security/crypto';
 
 export class GoogleDriveService {
   /**
    * Build Drive client from refresh token
    */
-  static getDriveClient(refreshToken: string): drive_v3.Drive {
+  static getDriveClient(refreshTokenEncrypted: string): drive_v3.Drive {
     const oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
@@ -12,7 +13,7 @@ export class GoogleDriveService {
     );
 
     oauth2Client.setCredentials({
-      refresh_token: refreshToken,
+      refresh_token: Crypto.decrypt(refreshTokenEncrypted),
     });
 
     return google.drive({

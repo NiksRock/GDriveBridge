@@ -1,6 +1,6 @@
 import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
-
+import { CryptoService } from '../../security/crypto.service';
 import { GoogleOAuthService } from './google-oauth.service';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -9,6 +9,7 @@ export class AuthController {
   constructor(
     private readonly googleOAuth: GoogleOAuthService,
     private readonly prisma: PrismaService,
+    private readonly cryptoService: CryptoService,
   ) {}
 
   /**
@@ -82,14 +83,14 @@ export class AuthController {
         },
       },
       update: {
-        refreshToken: tokens.refresh_token,
+        refreshTokenEncrypted: this.cryptoService.encrypt(tokens.refresh_token),
         avatarUrl: profile.picture,
       },
       create: {
         userId: user.id,
         email: profile.email,
         avatarUrl: profile.picture,
-        refreshToken: tokens.refresh_token,
+        refreshTokenEncrypted: this.cryptoService.encrypt(tokens.refresh_token),
       },
     });
 

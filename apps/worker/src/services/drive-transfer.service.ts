@@ -58,7 +58,7 @@ export class DriveTransferEngine {
         /**
          * ✅ Increment progress per copied file
          */
-        await this.prisma.transfer.update({
+        await this.prisma.transferJob.update({
           where: { id: this.transferId },
           data: {
             completedItems: { increment: 1 },
@@ -70,7 +70,7 @@ export class DriveTransferEngine {
          */
         await this.prisma.transferEvent.create({
           data: {
-            transferId: this.transferId,
+            jobId: this.transferId,
             type: 'file.copied',
             message: `Copied ${child.name}`,
           },

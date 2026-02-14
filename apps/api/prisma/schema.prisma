@@ -1,3 +1,8 @@
+// ============================================================
+// GDriveBridge v2 — Enterprise Production Schema
+// Compliant with DEFT v2.0 Strict Requirements
+// ============================================================
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,124 +12,207 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ============================================================
+// USERS
+// DEFT §5 — Permanent Truth
+// ============================================================
+
 model User {
   id        String   @id @default(uuid())
   email     String   @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   accounts  GoogleAccount[]
-  transfers Transfer[]
+  jobs      TransferJob[]
+
+  @@index([email])
 }
 
+// ============================================================
+// CONNECTED ACCOUNTS
+// DEFT §4.1 — OAuth + Token Encryption + Isolation
+// ============================================================
+
 model GoogleAccount {
-  id     String @id @default(uuid())
-  userId String
+  id        String   @id @default(uuid())
+  userId    String
 
-  email     String
-  avatarUrl String?
+  email       String
+  avatarUrl   String?
+  refreshTokenEncrypted String   // MUST be encrypted at rest
 
-  refreshToken String
+  dailyBytesTransferred BigInt @default(0)
+  lastQuotaReset        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // ✅ REQUIRED opposite relations
-  sourceTransfers      Transfer[] @relation("SourceAccount")
-  destinationTransfers Transfer[] @relation("DestinationAccount")
+  sourceJobs      TransferJob[] @relation("SourceAccount")
+  destinationJobs TransferJob[] @relation("DestinationAccount")
 
   @@unique([userId, email])
+  @@index([userId])
 }
 
+// ============================================================
+// TRANSFER JOB (ROOT SESSION)
+// DEFT §4.3, §6 — Orchestration Layer
+// ============================================================
 
-
-model Transfer {
-  id     String @id @default(uuid())
-  userId String
+model TransferJob {
+  id        String @id @default(uuid())
+  userId    String
 
   sourceAccountId      String
   destinationAccountId String
 
   destinationFolderId String
 
-  mode   TransferMode   @default(copy)
-  status TransferStatus @default(pending)
+  mode   TransferMode
+  status TransferStatus @default(PENDING)
 
-  totalItems     Int @default(0)
-  completedItems Int @default(0)
-  failedItems    Int @default(0)
+  totalItems      Int     @default(0)
+  completedItems  Int     @default(0)
+  failedItems     Int     @default(0)
+  skippedItems    Int     @default(0)
 
-  createdAt  DateTime  @default(now())
+  totalBytes      BigInt  @default(0)
+  transferredBytes BigInt @default(0)
+
+  riskFlags       Json?
+  warnings        Json?
+
   startedAt  DateTime?
+  pausedAt   DateTime?
   finishedAt DateTime?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   sourceAccount      GoogleAccount @relation("SourceAccount", fields: [sourceAccountId], references: [id])
   destinationAccount GoogleAccount @relation("DestinationAccount", fields: [destinationAccountId], references: [id])
 
-  items  TransferItem[]
-  events TransferEvent[]
+  items   TransferItem[]
+  events  TransferEvent[]
+  logs    TransferLog[]
 
-  @@index([userId])
   @@index([status])
+  @@index([userId])
 }
 
-model TransferItem {
-  id         String @id @default(uuid())
-  transferId String
+// ============================================================
+// TRANSFER ITEMS (EVERY FILE + FOLDER)
+// DEFT §5 — All recursion children MUST persist
+// DEFT §7 — Exactly-Once Idempotency
+// ============================================================
 
-  googleFileId String
+model TransferItem {
+  id          String @id @default(uuid())
+  jobId       String
+
+  sourceFileId      String
+  sourceParentId    String?
+  destinationFileId String?
+
   fileName     String
   mimeType     String?
   sizeBytes    BigInt?
 
-  status       ItemStatus @default(pending)
+  checksum     String?   // Optional verification
+  depth        Int       @default(0)
+
+  status       ItemStatus @default(PENDING)
+  retryCount   Int        @default(0)
   errorMessage String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  @@index([transferId])
+  @@index([jobId])
   @@index([status])
+  @@index([sourceFileId])
+  @@index([destinationFileId])
 }
 
-model TransferEvent {
-  id         String @id @default(uuid())
-  transferId String
+// ============================================================
+// TRANSFER EVENTS (Real-Time + System Events)
+// DEFT §10 — Real-Time Progress
+// ============================================================
 
-  type     String
-  message  String?
-  metadata Json?
+model TransferEvent {
+  id        String @id @default(uuid())
+  jobId     String
+
+  type      String
+  message   String?
+  metadata  Json?
 
   createdAt DateTime @default(now())
 
-  transfer Transfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
-  @@index([transferId])
+  @@index([jobId])
+  @@index([type])
 }
 
+// ============================================================
+// TRANSFER LOGS (Enterprise Audit Trail)
+// DEFT §4.5, §13 — Full Audit + Reporting
+// ============================================================
+
+model TransferLog {
+  id        String @id @default(uuid())
+  jobId     String
+
+  level     LogLevel
+  action    String
+  context   Json?
+
+  createdAt DateTime @default(now())
+
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([level])
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
 enum TransferMode {
-  copy
-  move
+  COPY
+  MOVE
 }
 
 enum TransferStatus {
-  pending
-  running
-  paused
-  completed
-  failed
-  cancelled
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+  AUTO_PAUSED_QUOTA
 }
 
 enum ItemStatus {
-  pending
-  running
-  completed
-  failed
-  skipped
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  VERIFYING
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
 }
