@@ -23,3 +23,7 @@ packages/**/dist
 apps/**/dist
 apps/api/prisma/dev.db
 apps/api/prisma/dev.db-journal
+.env.*
+.DS_Store
+Thumbs.db
+.next

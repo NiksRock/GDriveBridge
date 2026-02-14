@@ -3,6 +3,9 @@
     "target": "ES2022",
     "strict": true,
     "baseUrl": ".",
+    "moduleResolution": "NodeNext",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
     "paths": {
       "@shared/*": ["packages/shared/src/*"]
     }

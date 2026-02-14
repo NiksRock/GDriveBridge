@@ -1,3 +1,3 @@
-export default {
-  '*.{ts,tsx,js,jsx,json}': ['prettier --write'],
+module.exports = {
+  '*.{ts,tsx,js,jsx,json,md}': ['prettier --write'],
 };
