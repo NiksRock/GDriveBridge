@@ -69,19 +69,21 @@ export class PreScanService {
         let pageToken: string | undefined = undefined;
 
         do {
-          const children = await sourceDrive.files.list({
-            q: `'${fileId}' in parents and trashed=false`,
-            fields: 'nextPageToken,files(id,mimeType,size)',
-            pageSize: 1000,
-            pageToken,
-          });
+          const children: drive_v3.Schema$FileList = (
+            await sourceDrive.files.list({
+              q: `'${fileId}' in parents and trashed=false`,
+              fields: 'nextPageToken,files(id,mimeType,size)',
+              pageSize: 1000,
+              pageToken,
+            })
+          ).data;
 
-          for (const child of children.data.files ?? []) {
+          for (const child of children.files ?? []) {
             if (!child.id) continue;
             await scanRecursive(child.id, depth + 1);
           }
 
-          pageToken = children.data.nextPageToken ?? undefined;
+          pageToken = children.nextPageToken ?? undefined;
         } while (pageToken);
       } else {
         totalFiles++;
@@ -106,18 +108,19 @@ export class PreScanService {
     let pageToken: string | undefined = undefined;
 
     do {
-      const res = await destinationDrive.files.list({
-        q: `'${dto.destinationFolderId}' in parents and trashed=false`,
-        fields: 'nextPageToken,files(id)',
-        pageSize: 1000,
-        pageToken,
-      });
+      const { data: res }: { data: drive_v3.Schema$FileList } =
+        await destinationDrive.files.list({
+          q: `'${dto.destinationFolderId}' in parents and trashed=false`,
+          fields: 'nextPageToken,files(id)',
+          pageSize: 1000,
+          pageToken,
+        });
 
-      destinationItemCount += (res.data.files ?? []).length;
+      destinationItemCount += (res.files ?? []).length;
 
       if (destinationItemCount >= this.DEST_BLOCK_THRESHOLD) break;
 
-      pageToken = res.data.nextPageToken ?? undefined;
+      pageToken = res.nextPageToken ?? undefined;
     } while (pageToken);
 
     const projectedTotal = destinationItemCount + totalItems;

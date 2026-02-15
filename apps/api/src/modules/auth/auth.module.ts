@@ -6,6 +6,7 @@ import { PrismaModule } from '../../prisma/prisma.module';
 import { AuthController } from './auth.controller';
 import { GoogleOAuthService } from './google-oauth.service';
 import { AuthService } from './auth.service';
+import type { StringValue } from 'ms';
 
 @Module({
   imports: [
@@ -14,9 +15,9 @@ import { AuthService } from './auth.service';
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET'),
+        secret: config.getOrThrow<string>('JWT_SECRET'),
         signOptions: {
-          expiresIn: config.get<string>('JWT_EXPIRES_IN') ?? '7d',
+          expiresIn: config.getOrThrow<string>('JWT_EXPIRES_IN') as StringValue,
         },
       }),
     }),

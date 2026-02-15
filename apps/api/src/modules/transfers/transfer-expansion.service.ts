@@ -90,14 +90,15 @@ export class TransferExpansionService {
       let pageToken: string | undefined = undefined;
 
       do {
-        const children = await drive.files.list({
-          q: `'${file.id}' in parents and trashed=false`,
-          fields: 'nextPageToken, files(id)',
-          pageSize: 1000,
-          pageToken,
-        });
+        const { data: children }: { data: drive_v3.Schema$FileList } =
+          await drive.files.list({
+            q: `'${file.id}' in parents and trashed=false`,
+            fields: 'nextPageToken, files(id)',
+            pageSize: 1000,
+            pageToken,
+          });
 
-        for (const child of children.data.files ?? []) {
+        for (const child of children.files ?? []) {
           if (!child.id) continue;
 
           const result = await this.expandRecursive(ctx, child.id, file.id, depth + 1);
@@ -106,7 +107,7 @@ export class TransferExpansionService {
           totalBytes += result.bytes;
         }
 
-        pageToken = children.data.nextPageToken ?? undefined;
+        pageToken = children.nextPageToken ?? undefined;
       } while (pageToken);
     }
 

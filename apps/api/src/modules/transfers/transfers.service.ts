@@ -8,6 +8,7 @@ import { QUEUE_NAMES, TransferStatus } from '@gdrivebridge/shared';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTransferDto } from './dto/create-transfer.dto';
 import { transferQueue } from '../../queue/transfer.queue';
+import { TransferMode } from '@prisma/client';
 
 @Injectable()
 export class TransfersService {
@@ -22,6 +23,8 @@ export class TransfersService {
   // ============================================================
 
   async createTransfer(userId: string, dto: CreateTransferDto) {
+    const prismaMode = dto.mode === 'copy' ? TransferMode.COPY : TransferMode.MOVE;
+    const dtoMode = dto.mode;
     const existing = await this.prisma.transferJob.findFirst({
       where: {
         userId,
@@ -80,11 +83,12 @@ export class TransfersService {
     // ============================================================
 
     const preScan = await this.preScanService.runPreScan(userId, {
+      userId, // 👈 ADD THIS
       sourceAccountId: dto.sourceAccountId,
       destinationAccountId: dto.destinationAccountId,
       sourceFileIds: dto.sourceFileIds,
       destinationFolderId: dto.destinationFolderId,
-      mode: dto.mode,
+      mode: dtoMode,
     });
 
     if (preScan.riskFlags.includes('DESTINATION_ITEM_LIMIT_BLOCK')) {
@@ -105,7 +109,7 @@ export class TransfersService {
         sourceAccountId: sourceAccount.id,
         destinationAccountId: destinationAccount.id,
         destinationFolderId: dto.destinationFolderId,
-        mode: dto.mode,
+        mode: prismaMode,
         status: TransferStatus.PENDING,
         riskFlags: preScan.riskFlags,
         warnings: preScan.warnings,
