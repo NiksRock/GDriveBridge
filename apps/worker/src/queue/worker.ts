@@ -1,6 +1,8 @@
 // ============================================================
-// GDriveBridge Worker — Enterprise Locked Execution Engine
-// FIXED VERSION
+// GDriveBridge Worker — Fully Hardened
+// - Distributed Rate Governor
+// - Dual Account Lock (Source + Destination)
+// - Structured TransferLog
 // ============================================================
 
 import { Worker, Queue } from 'bullmq';
@@ -13,25 +15,19 @@ import { IdempotentCopyService } from '../services/idempotent-copy.service';
 import { RateGovernor } from '../services/rate-governor.service';
 import { AccountLockService } from '../services/account-lock.service';
 
-console.log('🚀 Enterprise Worker started...');
+const redisClient = new Redis(redisConfig);
+const progressPublisher = new Redis(redisConfig);
 
-const redisClient = new Redis({
-  host: redisConfig.host,
-  port: redisConfig.port,
-});
-
-const progressPublisher = new Redis({
-  host: redisConfig.host,
-  port: redisConfig.port,
-});
-
-const rateGovernor = new RateGovernor();
+const rateGovernor = new RateGovernor(redisClient);
 const accountLock = new AccountLockService(redisClient);
 
 const verificationQueue = new Queue(QUEUE_NAMES.TRANSFER_EVENTS, {
   connection: redisConfig,
 });
-
+process.on('SIGTERM', async () => {
+  await redisClient.quit();
+  await progressPublisher.quit();
+});
 new Worker(
   QUEUE_NAMES.TRANSFER,
   async (job) => {
@@ -52,8 +48,22 @@ new Worker(
       return;
     }
 
-    const acquired = await accountLock.acquire(transfer.destinationAccountId, transferId);
-    if (!acquired) throw new Error('Account busy — retry later');
+    // 🔒 Dual Lock: Source + Destination
+    const sourceLock = await accountLock.acquire(transfer.sourceAccountId, transferId);
+
+    if (!sourceLock) {
+      throw new Error('Source account busy');
+    }
+
+    const destinationLock = await accountLock.acquire(
+      transfer.destinationAccountId,
+      transferId,
+    );
+
+    if (!destinationLock) {
+      await accountLock.release(transfer.sourceAccountId, transferId);
+      throw new Error('Destination account busy');
+    }
 
     try {
       await prisma.transferJob.update({
@@ -61,6 +71,14 @@ new Worker(
         data: {
           status: TransferStatus.RUNNING,
           startedAt: transfer.startedAt ?? new Date(),
+        },
+      });
+
+      await prisma.transferLog.create({
+        data: {
+          jobId: transferId,
+          level: 'INFO',
+          action: 'transfer.started',
         },
       });
 
@@ -81,6 +99,7 @@ new Worker(
       });
 
       for (const item of pendingItems) {
+        await accountLock.extend(transfer.sourceAccountId, transferId);
         await accountLock.extend(transfer.destinationAccountId, transferId);
 
         const latest = await prisma.transferJob.findUnique({
@@ -146,6 +165,15 @@ new Worker(
             },
           });
 
+          await prisma.transferLog.create({
+            data: {
+              jobId: transferId,
+              level: 'INFO',
+              action: 'item.completed',
+              context: { fileName: item.fileName },
+            },
+          });
+
           await progressPublisher.publish(
             QUEUE_NAMES.TRANSFER_PROGRESS,
             JSON.stringify({
@@ -174,6 +202,15 @@ new Worker(
               where: { id: transferId },
               data: { failedItems: { increment: 1 } },
             });
+
+            await prisma.transferLog.create({
+              data: {
+                jobId: transferId,
+                level: 'ERROR',
+                action: 'item.failed',
+                context: { fileName: item.fileName, error: message },
+              },
+            });
           } else {
             await prisma.transferItem.update({
               where: { id: item.id },
@@ -189,14 +226,8 @@ new Worker(
 
       if (!fresh) return;
 
-      // 🔥 FIXED FINAL STATUS LOGIC
-      let finalStatus: TransferStatus;
-
-      if (fresh.failedItems > 0) {
-        finalStatus = TransferStatus.FAILED;
-      } else {
-        finalStatus = TransferStatus.COMPLETED;
-      }
+      const finalStatus =
+        fresh.failedItems > 0 ? TransferStatus.FAILED : TransferStatus.COMPLETED;
 
       await prisma.transferJob.update({
         where: { id: transferId },
@@ -206,17 +237,27 @@ new Worker(
         },
       });
 
+      await prisma.transferLog.create({
+        data: {
+          jobId: transferId,
+          level: finalStatus === TransferStatus.COMPLETED ? 'INFO' : 'ERROR',
+          action: 'transfer.finished',
+          context: { status: finalStatus },
+        },
+      });
+
       if (finalStatus === TransferStatus.COMPLETED && transfer.mode === 'MOVE') {
         await verificationQueue.add(QUEUE_NAMES.TRANSFER_EVENTS, {
           transferId,
         });
       }
     } finally {
+      await accountLock.release(transfer.sourceAccountId, transferId);
       await accountLock.release(transfer.destinationAccountId, transferId);
     }
   },
   {
     connection: redisConfig,
-    concurrency: 5,
+    concurrency: 2,
   },
 );

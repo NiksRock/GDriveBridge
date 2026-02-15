@@ -71,12 +71,6 @@ export class IdempotentCopyService {
   // Atomic Quota Enforcement
   // ============================================================
 
-  // ============================================================
-  // Atomic Quota Enforcement
-  // Prevents race condition across concurrent workers
-  // Satisfies: DEFT §11.2
-  // ============================================================
-
   private async incrementAndValidateQuota(transferId: string, bytes: bigint) {
     await this.ensureDailyReset();
 
@@ -134,27 +128,21 @@ export class IdempotentCopyService {
 
     if (!item) throw new Error('TransferItem not found');
 
-    // ============================================================
-    // 1️⃣ DB CHECK (Crash-Safe Resume)
-    // ============================================================
-
+    // 1️⃣ DB CHECK
     if (item.destinationFileId) return item.destinationFileId;
 
     const fileSize = item.sizeBytes ?? BigInt(0);
 
-    // ============================================================
-    // 2️⃣ API VERIFICATION (STRICT DEFT §7)
-    // ============================================================
-
+    // 2️⃣ API VERIFICATION
     const safeName = fileName.replace(/'/g, "\\'");
 
     const existing = await this.destinationDrive.files.list({
       q: `
-      name='${safeName}'
-      and '${destinationFolderId}' in parents
-      and trashed=false
-    `,
-      fields: 'files(id, size, appProperties)',
+        name='${safeName}'
+        and '${destinationFolderId}' in parents
+        and trashed=false
+      `,
+      fields: 'files(id,size,appProperties)',
     });
 
     const match = existing.data.files?.find(
@@ -165,7 +153,6 @@ export class IdempotentCopyService {
       const remoteSize = match.size ? BigInt(match.size) : BigInt(0);
 
       if (remoteSize === fileSize) {
-        // ✅ Correct File Found — Recovery
         await this.prisma.transferItem.update({
           where: { id: itemId },
           data: {
@@ -185,8 +172,8 @@ export class IdempotentCopyService {
         return match.id;
       }
 
-      // ❌ Corrupt Fragment — Delete
-      await this.rateGovernor.throttle();
+      // Corrupt fragment
+      await this.rateGovernor.throttle(this.accountId);
       await this.destinationDrive.files.delete({ fileId: match.id });
 
       await this.prisma.transferEvent.create({
@@ -198,15 +185,12 @@ export class IdempotentCopyService {
       });
     }
 
-    // ============================================================
     // 3️⃣ SAFE COPY
-    // ============================================================
-
     let attempt = 0;
 
     while (attempt < this.MAX_RETRIES) {
       try {
-        await this.rateGovernor.throttle();
+        await this.rateGovernor.throttle(this.accountId);
 
         const copied = await this.destinationDrive.files.copy({
           fileId: sourceFileId,
@@ -249,7 +233,7 @@ export class IdempotentCopyService {
   }
 
   // ============================================================
-  // Exactly-Once Folder Create (HARDENED)
+  // Exactly-Once Folder Create
   // ============================================================
 
   async createFolderExactlyOnce(params: {
@@ -267,10 +251,6 @@ export class IdempotentCopyService {
 
     if (item.destinationFileId) return item.destinationFileId;
 
-    // ------------------------------------------------------------
-    // 1️⃣ Search Existing Folder
-    // ------------------------------------------------------------
-
     const safeName = folderName.replace(/'/g, "\\'");
 
     const existing = await this.destinationDrive.files.list({
@@ -280,7 +260,7 @@ export class IdempotentCopyService {
         and mimeType='application/vnd.google-apps.folder'
         and trashed=false
       `,
-      fields: 'files(id, appProperties)',
+      fields: 'files(id,appProperties)',
     });
 
     const match = existing.data.files?.find(
@@ -299,11 +279,8 @@ export class IdempotentCopyService {
       return match.id;
     }
 
-    // ------------------------------------------------------------
-    // 2️⃣ Create Folder If Not Found
-    // ------------------------------------------------------------
+    await this.rateGovernor.throttle(this.accountId);
 
-    await this.rateGovernor.throttle();
     const created = await this.destinationDrive.files.create({
       requestBody: {
         name: folderName,

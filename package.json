@@ -10,7 +10,8 @@
     "format": "prettier --write .",
     "prepare": "husky",
     "clean": "powershell -ExecutionPolicy Bypass -File clean.ps1",
-    "reset": "pnpm run clean && pnpm install"
+    "reset": "pnpm run clean && pnpm install",
+    "lint-staged": "lint-staged"
   },
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {

@@ -14,14 +14,31 @@ export class TransfersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly preScanService: PreScanService,
-    private readonly expansionService: TransferExpansionService, // ✅ REQUIRED
+    private readonly expansionService: TransferExpansionService,
   ) {}
 
   // ============================================================
-  // CREATE TRANSFER (DEFT §5 + §8 compliant)
+  // CREATE TRANSFER (DEFT §3.1 + §5 + §8 compliant)
   // ============================================================
 
   async createTransfer(userId: string, dto: CreateTransferDto) {
+    const existing = await this.prisma.transferJob.findFirst({
+      where: {
+        userId,
+        sourceAccountId: dto.sourceAccountId,
+        destinationAccountId: dto.destinationAccountId,
+        destinationFolderId: dto.destinationFolderId,
+        status: {
+          in: ['PENDING', 'RUNNING', 'PAUSED', 'AUTO_PAUSED_QUOTA'],
+        },
+      },
+    });
+
+    if (existing) {
+      throw new ForbiddenException(
+        'An active transfer already exists for this source and destination',
+      );
+    }
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
     });
@@ -44,6 +61,18 @@ export class TransfersService {
 
     if (!destinationAccount) {
       throw new ForbiddenException('Invalid destination account');
+    }
+
+    // ============================================================
+    // 🔥 DEFT §3.1 — Source and Destination MUST be distinct
+    // ============================================================
+
+    if (sourceAccount.id === destinationAccount.id) {
+      throw new ForbiddenException('Source and destination accounts must be distinct');
+    }
+
+    if (sourceAccount.email === destinationAccount.email) {
+      throw new ForbiddenException('Source and destination accounts must be distinct');
     }
 
     // ============================================================
@@ -133,6 +162,11 @@ export class TransfersService {
       status: TransferStatus.PENDING,
     };
   }
+
+  // ============================================================
+  // RETRY FAILED ITEMS
+  // ============================================================
+
   async retryFailedItems(userId: string, transferId: string) {
     const transfer = await this.prisma.transferJob.findFirst({
       where: { id: transferId, userId },
@@ -141,10 +175,6 @@ export class TransfersService {
     if (!transfer) {
       throw new NotFoundException('Transfer not found');
     }
-
-    // ------------------------------------------------------------
-    // Only allow retry if there are failed items
-    // ------------------------------------------------------------
 
     if (transfer.failedItems === 0) {
       throw new ForbiddenException('No failed items to retry');
@@ -156,10 +186,6 @@ export class TransfersService {
     ) {
       throw new ForbiddenException('Retry allowed only after transfer has finished');
     }
-
-    // ------------------------------------------------------------
-    // Reset failed items to PENDING
-    // ------------------------------------------------------------
 
     const failedItems = await this.prisma.transferItem.findMany({
       where: {
@@ -174,7 +200,6 @@ export class TransfersService {
     }
 
     await this.prisma.$transaction([
-      // Reset items
       this.prisma.transferItem.updateMany({
         where: {
           jobId: transferId,
@@ -186,7 +211,6 @@ export class TransfersService {
         },
       }),
 
-      // Reset job counters
       this.prisma.transferJob.update({
         where: { id: transferId },
         data: {
@@ -196,7 +220,6 @@ export class TransfersService {
         },
       }),
 
-      // Log event
       this.prisma.transferEvent.create({
         data: {
           jobId: transferId,
@@ -205,10 +228,6 @@ export class TransfersService {
         },
       }),
     ]);
-
-    // ------------------------------------------------------------
-    // Re-enqueue job
-    // ------------------------------------------------------------
 
     await transferQueue.add(QUEUE_NAMES.TRANSFER, {
       transferId,
@@ -219,9 +238,11 @@ export class TransfersService {
       retriedItems: failedItems.length,
     };
   }
+
   // ============================================================
-  // LIST TRANSFERS
+  // PAUSE
   // ============================================================
+
   async pauseTransfer(userId: string, id: string) {
     const transfer = await this.prisma.transferJob.findFirst({
       where: { id, userId },
@@ -239,6 +260,10 @@ export class TransfersService {
 
     return { status: 'PAUSED' };
   }
+
+  // ============================================================
+  // RESUME
+  // ============================================================
 
   async resumeTransfer(userId: string, id: string) {
     const transfer = await this.prisma.transferJob.findFirst({
@@ -266,6 +291,11 @@ export class TransfersService {
 
     return { status: 'RESUMED' };
   }
+
+  // ============================================================
+  // CANCEL
+  // ============================================================
+
   async cancelTransfer(userId: string, id: string) {
     const transfer = await this.prisma.transferJob.findFirst({
       where: { id, userId },
@@ -294,6 +324,10 @@ export class TransfersService {
     return { status: 'CANCELLED' };
   }
 
+  // ============================================================
+  // LIST
+  // ============================================================
+
   async listTransfers(userId: string) {
     const transfers = await this.prisma.transferJob.findMany({
       where: { userId },
@@ -313,7 +347,7 @@ export class TransfersService {
   }
 
   // ============================================================
-  // GET TRANSFER BY ID
+  // GET ONE
   // ============================================================
 
   async getTransferById(userId: string, id: string) {

@@ -1,10 +1,19 @@
-import { BadRequestException, Controller, Get, Query, Res } from '@nestjs/common';
-import type { Response } from 'express';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Query,
+  Req,
+  Res,
+  UnauthorizedException,
+} from '@nestjs/common';
+import type { Response, Request } from 'express';
 import { CryptoService } from '../../security/crypto.service';
 import { GoogleOAuthService } from './google-oauth.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuthService } from './auth.service';
 import { Public } from '../../auth/public.decorator';
+import * as crypto from 'crypto';
+import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
@@ -12,78 +21,99 @@ export class AuthController {
     private readonly googleOAuth: GoogleOAuthService,
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
-    private readonly authService: AuthService,
+    private readonly config: ConfigService,
   ) {}
 
-  /**
-   * Step 1: Start Google OAuth Flow
-   *
-   * GET /api/auth/google?userId=demo-user
-   */
-  @Public()
+  // ============================================================
+  // Step 1: Generate Signed OAuth State
+  // ============================================================
+
   @Get('google')
-  async connect(@Query('userId') userId: string, @Res() res: Response) {
-    if (!userId) {
-      throw new BadRequestException('Missing userId');
+  async connect(@Req() req: Request & { user?: { id: string } }, @Res() res: Response) {
+    if (!req.user?.id) {
+      throw new UnauthorizedException('Authentication required');
     }
 
-    const url = this.googleOAuth.getConsentUrl(userId);
+    const payloadObject = {
+      userId: req.user.id,
+      timestamp: Date.now(),
+    };
+
+    const payload = JSON.stringify(payloadObject);
+
+    const secret = this.config.get<string>('JWT_SECRET');
+    if (!secret) throw new Error('JWT_SECRET not configured');
+
+    const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
+
+    const state = Buffer.from(JSON.stringify({ payload, signature })).toString(
+      'base64url',
+    );
+
+    const url = this.googleOAuth.getConsentUrl(state);
+
     return res.redirect(url);
   }
 
-  /**
-   * Step 2: Google OAuth Callback
-   *
-   * Google redirects back with:
-   * - code (auth code)
-   * - state (userId)
-   */
+  // ============================================================
+  // Step 2: Validate Signed State + Expiry
+  // ============================================================
+
   @Public()
   @Get('google/callback')
-  async callback(@Query('code') code: string, @Query('state') userId: string) {
-    if (!userId) {
-      throw new BadRequestException('Missing userId in OAuth state');
+  async callback(@Query('code') code: string, @Query('state') state: string) {
+    if (!code || !state) {
+      throw new BadRequestException('Missing OAuth parameters');
     }
 
-    if (!code) {
-      throw new BadRequestException('Missing OAuth code');
+    let decoded: { payload: string; signature: string };
+
+    try {
+      decoded = JSON.parse(Buffer.from(state, 'base64url').toString());
+    } catch {
+      throw new BadRequestException('Invalid OAuth state');
     }
 
-    // 1. Exchange code → tokens
+    const secret = this.config.get<string>('JWT_SECRET');
+    if (!secret) throw new Error('JWT_SECRET not configured');
+
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(decoded.payload)
+      .digest('hex');
+
+    if (expectedSignature !== decoded.signature) {
+      throw new UnauthorizedException('OAuth state verification failed');
+    }
+
+    const parsed = JSON.parse(decoded.payload);
+
+    // 🔥 EXPIRY CHECK (10 MINUTES)
+    if (Date.now() - parsed.timestamp > 10 * 60 * 1000) {
+      throw new UnauthorizedException('OAuth state expired');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: parsed.userId },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Invalid user');
+    }
+
     const tokens = await this.googleOAuth.getTokens(code);
 
     if (!tokens.refresh_token) {
-      throw new BadRequestException(
-        'Missing refresh token. Reconnect account with prompt=consent.',
-      );
+      throw new BadRequestException('Missing refresh token');
     }
 
-    // 2. Fetch Google profile using tokens
     const profile = await this.googleOAuth.getDriveUser(tokens);
 
-    if (!profile.email) {
-      throw new BadRequestException('Google account email not found');
-    }
-
-    /**
-     * TEMP MVP:
-     * Ensure user exists.
-     * Later: userId must come from session/JWT, not query/state.
-     */
-    const user = await this.prisma.user.upsert({
-      where: { email: profile.email },
-      update: {},
-      create: {
-        email: profile.email,
-      },
-    });
-
-    // 3. Save connected Google account in DB
     const account = await this.prisma.googleAccount.upsert({
       where: {
         userId_email: {
           userId: user.id,
-          email: profile.email,
+          email: profile.email!,
         },
       },
       update: {
@@ -92,21 +122,15 @@ export class AuthController {
       },
       create: {
         userId: user.id,
-        email: profile.email,
+        email: profile.email!,
         avatarUrl: profile.picture,
         refreshTokenEncrypted: this.cryptoService.encrypt(tokens.refresh_token),
       },
     });
 
-    const token = this.authService.signToken({
-      id: user.id,
-      email: user.email,
-    });
-
     return {
-      message: '✅ Google Account Connected Successfully',
+      message: 'Google Account Connected Successfully',
       accountId: account.id,
-      accessToken: token,
     };
   }
 }

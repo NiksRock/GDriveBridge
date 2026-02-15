@@ -1,48 +1,70 @@
-// ============================================================
-// Transfer WebSocket Gateway
-// Satisfies: DEFT §10 Real-Time Progress Architecture
-// ============================================================
-import type { TransferProgressEvent } from '@gdrivebridge/shared';
-
 import {
   WebSocketGateway,
   WebSocketServer,
   SubscribeMessage,
   OnGatewayConnection,
-  OnGatewayDisconnect,
 } from '@nestjs/websockets';
 
 import { Server, Socket } from 'socket.io';
+import { PrismaService } from '../../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
 
 @WebSocketGateway({
   namespace: '/transfers',
   cors: {
-    origin: ['http://localhost:5173'],
+    origin: process.env.CORS_ORIGIN?.split(',') ?? ['http://localhost:5173'],
   },
 })
-export class TransferGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class TransferGateway implements OnGatewayConnection {
   @WebSocketServer()
   server!: Server;
 
-  handleConnection(client: Socket) {
-    console.log('🔌 WS Connected:', client.id);
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jwtService: JwtService,
+  ) {}
+
+  async handleConnection(client: Socket) {
+    try {
+      const token = client.handshake.auth?.token;
+
+      if (!token) {
+        client.disconnect();
+        return;
+      }
+
+      const payload = this.jwtService.verify(token);
+
+      client.data.userId = payload.sub;
+    } catch {
+      client.disconnect();
+    }
   }
 
-  handleDisconnect(client: Socket) {
-    console.log('❌ WS Disconnected:', client.id);
-  }
-
-  // Client subscribes to specific transfer room
   @SubscribeMessage('subscribe')
-  handleSubscribe(client: Socket, payload: { transferId: string }) {
+  async handleSubscribe(client: Socket, payload: { transferId: string }) {
+    const transfer = await this.prisma.transferJob.findFirst({
+      where: {
+        id: payload.transferId,
+        userId: client.data.userId,
+      },
+    });
+
+    if (!transfer) {
+      return;
+    }
+
     client.join(payload.transferId);
-    console.log('📡 Subscribed to transfer:', payload.transferId);
   }
 
-  // Used internally by Redis listener
   emitProgress(
     transferId: string,
-    data: Omit<TransferProgressEvent, 'jobId'> & { status: string },
+    data: {
+      currentFileName?: string;
+      completedFiles: number;
+      totalFiles: number;
+      status: string;
+    },
   ) {
     this.server.to(transferId).emit('progress', data);
   }

@@ -6,7 +6,14 @@ import { Response } from 'express';
 @Injectable()
 export class ReportService {
   constructor(private readonly prisma: PrismaService) {}
-
+  private sanitize(value: unknown): string {
+    if (!value) return '';
+    const str = String(value);
+    if (/^[=+\-@]/.test(str)) {
+      return `'${str}`;
+    }
+    return str;
+  }
   async generateReport(userId: string, transferId: string, res: Response) {
     const transfer = await this.prisma.transferJob.findFirst({
       where: { id: transferId, userId },
@@ -56,13 +63,13 @@ export class ReportService {
 
     for (const item of transfer.items) {
       csvStream.write({
-        fileName: item.fileName,
+        fileName: this.sanitize(item.fileName),
         sourceFileId: item.sourceFileId,
         destinationFileId: item.destinationFileId,
         status: item.status,
         sizeBytes: item.sizeBytes?.toString(),
         retryCount: item.retryCount,
-        errorMessage: item.errorMessage,
+        errorMessage: this.sanitize(item.errorMessage),
         createdAt: item.createdAt.toISOString(),
         updatedAt: item.updatedAt.toISOString(),
       });
@@ -79,7 +86,7 @@ export class ReportService {
     for (const event of transfer.events) {
       csvStream.write({
         type: event.type,
-        message: event.message,
+        message: this.sanitize(event.message),
         createdAt: event.createdAt.toISOString(),
       });
     }

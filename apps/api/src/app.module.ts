@@ -8,6 +8,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { SecurityModule } from './security/security.module';
 import { JwtAuthGuard } from './auth/jwt.guard';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { JwtAuthGuard } from './auth/jwt.guard';
     AccountsModule,
     TransfersModule,
   ],
+  controllers: [HealthController], // ✅ FIXED
   providers: [
     {
       provide: APP_GUARD,
