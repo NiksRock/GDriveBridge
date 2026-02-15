@@ -1,6 +1,6 @@
 // ============================================================
 // GDriveBridge v2 — Enterprise Production Schema
-// Compliant with DEFT v2.0 Strict Requirements
+// Option A Auth Model Enforced
 // ============================================================
 
 generator client {
@@ -14,7 +14,6 @@ datasource db {
 
 // ============================================================
 // USERS
-// DEFT §5 — Permanent Truth
 // ============================================================
 
 model User {
@@ -30,8 +29,9 @@ model User {
 }
 
 // ============================================================
-// CONNECTED ACCOUNTS
-// DEFT §4.1 — OAuth + Token Encryption + Isolation
+// GOOGLE ACCOUNTS (OPTION A MODEL)
+// - Login account = Primary Source
+// - Exactly one Destination allowed
 // ============================================================
 
 model GoogleAccount {
@@ -40,8 +40,13 @@ model GoogleAccount {
 
   email       String
   avatarUrl   String?
-  refreshTokenEncrypted String   // MUST be encrypted at rest
+  refreshTokenEncrypted String
 
+  // 🔥 OPTION A FLAGS
+  isPrimarySource Boolean @default(false)
+  isDestination   Boolean @default(false)
+
+  // Quota Tracking
   dailyBytesTransferred BigInt @default(0)
   lastQuotaReset        DateTime?
 
@@ -55,11 +60,12 @@ model GoogleAccount {
 
   @@unique([userId, email])
   @@index([userId])
+  @@index([isPrimarySource])
+  @@index([isDestination])
 }
 
 // ============================================================
-// TRANSFER JOB (ROOT SESSION)
-// DEFT §4.3, §6 — Orchestration Layer
+// TRANSFER JOB
 // ============================================================
 
 model TransferJob {
@@ -74,57 +80,55 @@ model TransferJob {
   mode   TransferMode
   status TransferStatus @default(PENDING)
 
-  totalItems      Int     @default(0)
-  completedItems  Int     @default(0)
-  failedItems     Int     @default(0)
-  skippedItems    Int     @default(0)
+  totalItems       Int     @default(0)
+  completedItems   Int     @default(0)
+  failedItems      Int     @default(0)
+  skippedItems     Int     @default(0)
 
-  totalBytes      BigInt  @default(0)
-  transferredBytes BigInt @default(0)
+  totalBytes       BigInt  @default(0)
+  transferredBytes BigInt  @default(0)
 
-  riskFlags       Json?
-  warnings        Json?
+  riskFlags Json?
+  warnings  Json?
 
   startedAt  DateTime?
   pausedAt   DateTime?
   finishedAt DateTime?
 
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   sourceAccount      GoogleAccount @relation("SourceAccount", fields: [sourceAccountId], references: [id])
   destinationAccount GoogleAccount @relation("DestinationAccount", fields: [destinationAccountId], references: [id])
 
-  items   TransferItem[]
-  events  TransferEvent[]
-  logs    TransferLog[]
+  items  TransferItem[]
+  events TransferEvent[]
+  logs   TransferLog[]
 
   @@index([status])
   @@index([userId])
 }
 
 // ============================================================
-// TRANSFER ITEMS (EVERY FILE + FOLDER)
-// DEFT §5 — All recursion children MUST persist
-// DEFT §7 — Exactly-Once Idempotency
+// TRANSFER ITEMS
 // ============================================================
 
 model TransferItem {
-  id          String @id @default(uuid())
-  jobId       String
+  id        String @id @default(uuid())
+  jobId     String
 
   sourceFileId      String
   sourceParentId    String?
   destinationFileId String?
 
-  fileName     String
-  mimeType     String?
-  sizeBytes    BigInt?
+  fileName  String
+  mimeType  String?
+  sizeBytes BigInt?
 
-  checksum     String?
-  depth        Int       @default(0)
+  checksum String?
+  depth    Int @default(0)
 
   status       ItemStatus @default(PENDING)
   retryCount   Int        @default(0)
@@ -140,23 +144,21 @@ model TransferItem {
   @@index([sourceFileId])
   @@index([destinationFileId])
 
-  // 🔥 CRITICAL: Exactly-once expansion protection
+  // Exactly-once expansion protection
   @@unique([jobId, sourceFileId])
 }
 
-
 // ============================================================
-// TRANSFER EVENTS (Real-Time + System Events)
-// DEFT §10 — Real-Time Progress
+// TRANSFER EVENTS
 // ============================================================
 
 model TransferEvent {
   id        String @id @default(uuid())
   jobId     String
 
-  type      String
-  message   String?
-  metadata  Json?
+  type     String
+  message  String?
+  metadata Json?
 
   createdAt DateTime @default(now())
 
@@ -167,17 +169,16 @@ model TransferEvent {
 }
 
 // ============================================================
-// TRANSFER LOGS (Enterprise Audit Trail)
-// DEFT §4.5, §13 — Full Audit + Reporting
+// TRANSFER LOGS
 // ============================================================
 
 model TransferLog {
-  id        String @id @default(uuid())
-  jobId     String
+  id     String @id @default(uuid())
+  jobId  String
 
-  level     LogLevel
-  action    String
-  context   Json?
+  level   LogLevel
+  action  String
+  context Json?
 
   createdAt DateTime @default(now())
 

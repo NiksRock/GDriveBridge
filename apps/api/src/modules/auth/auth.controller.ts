@@ -2,30 +2,35 @@ import {
   BadRequestException,
   Controller,
   Get,
+  Post,
+  Body,
   Query,
   Req,
   Res,
   UnauthorizedException,
+  ForbiddenException,
 } from '@nestjs/common';
+
 import type { Response, Request } from 'express';
+import * as crypto from 'crypto';
+
+import { Public } from '../../auth/public.decorator';
+import { PrismaService } from '../../prisma/prisma.service';
 import { CryptoService } from '../../security/crypto.service';
 import { GoogleOAuthService } from './google-oauth.service';
-import { PrismaService } from '../../prisma/prisma.service';
-import { Public } from '../../auth/public.decorator';
-import * as crypto from 'crypto';
 import { ConfigService } from '@nestjs/config';
 
 @Controller('auth')
 export class AuthController {
   constructor(
-    private readonly googleOAuth: GoogleOAuthService,
     private readonly prisma: PrismaService,
     private readonly cryptoService: CryptoService,
+    private readonly googleOAuth: GoogleOAuthService,
     private readonly config: ConfigService,
   ) {}
 
   // ============================================================
-  // Step 1: Generate Signed OAuth State
+  // STEP 1 — Initiate Google OAuth
   // ============================================================
 
   @Get('google')
@@ -42,7 +47,9 @@ export class AuthController {
     const payload = JSON.stringify(payloadObject);
 
     const secret = this.config.get<string>('JWT_SECRET');
-    if (!secret) throw new Error('JWT_SECRET not configured');
+    if (!secret) {
+      throw new Error('JWT_SECRET not configured');
+    }
 
     const signature = crypto.createHmac('sha256', secret).update(payload).digest('hex');
 
@@ -56,7 +63,7 @@ export class AuthController {
   }
 
   // ============================================================
-  // Step 2: Validate Signed State + Expiry
+  // STEP 2 — OAuth Callback (Option A Enforcement)
   // ============================================================
 
   @Public()
@@ -75,7 +82,9 @@ export class AuthController {
     }
 
     const secret = this.config.get<string>('JWT_SECRET');
-    if (!secret) throw new Error('JWT_SECRET not configured');
+    if (!secret) {
+      throw new Error('JWT_SECRET not configured');
+    }
 
     const expectedSignature = crypto
       .createHmac('sha256', secret)
@@ -88,7 +97,7 @@ export class AuthController {
 
     const parsed = JSON.parse(decoded.payload);
 
-    // 🔥 EXPIRY CHECK (10 MINUTES)
+    // 🔥 Enforce 10-minute expiry
     if (Date.now() - parsed.timestamp > 10 * 60 * 1000) {
       throw new UnauthorizedException('OAuth state expired');
     }
@@ -109,6 +118,17 @@ export class AuthController {
 
     const profile = await this.googleOAuth.getDriveUser(tokens);
 
+    // ============================================================
+    // OPTION A LOGIC
+    // First connected account becomes Primary Source
+    // ============================================================
+
+    const existingAccounts = await this.prisma.googleAccount.findMany({
+      where: { userId: user.id },
+    });
+
+    const isFirstAccount = existingAccounts.length === 0;
+
     const account = await this.prisma.googleAccount.upsert({
       where: {
         userId_email: {
@@ -125,12 +145,86 @@ export class AuthController {
         email: profile.email!,
         avatarUrl: profile.picture,
         refreshTokenEncrypted: this.cryptoService.encrypt(tokens.refresh_token),
+        isPrimarySource: isFirstAccount, // 🔥 First login = Source
+        isDestination: false,
       },
     });
 
     return {
-      message: 'Google Account Connected Successfully',
+      message: 'Google account connected successfully',
       accountId: account.id,
+      isPrimarySource: account.isPrimarySource,
+      isDestination: account.isDestination,
     };
+  }
+
+  // ============================================================
+  // OPTION A — SET DESTINATION ACCOUNT
+  // Exactly one destination allowed
+  // ============================================================
+
+  @Post('set-destination')
+  async setDestination(
+    @Req() req: Request & { user: { id: string } },
+    @Body() body: { accountId: string },
+  ) {
+    const userId = req.user.id;
+
+    const account = await this.prisma.googleAccount.findFirst({
+      where: {
+        id: body.accountId,
+        userId,
+      },
+    });
+
+    if (!account) {
+      throw new ForbiddenException('Invalid account');
+    }
+
+    if (account.isPrimarySource) {
+      throw new ForbiddenException('Primary source account cannot be destination');
+    }
+
+    // Demote any existing destination
+    await this.prisma.googleAccount.updateMany({
+      where: {
+        userId,
+        isDestination: true,
+      },
+      data: {
+        isDestination: false,
+      },
+    });
+
+    // Promote selected account
+    await this.prisma.googleAccount.update({
+      where: { id: account.id },
+      data: {
+        isDestination: true,
+      },
+    });
+
+    return {
+      message: 'Destination account set successfully',
+    };
+  }
+
+  // ============================================================
+  // GET CONNECTED ACCOUNTS
+  // ============================================================
+
+  @Get('accounts')
+  async listAccounts(@Req() req: Request & { user: { id: string } }) {
+    return this.prisma.googleAccount.findMany({
+      where: { userId: req.user.id },
+      select: {
+        id: true,
+        email: true,
+        avatarUrl: true,
+        isPrimarySource: true,
+        isDestination: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
   }
 }
