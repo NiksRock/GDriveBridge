@@ -4,6 +4,9 @@
     "dbaeumer.vscode-eslint",
     "bradlc.vscode-tailwindcss",
     "usernamehw.errorlens",
-    "eamodio.gitlens"
+    "eamodio.gitlens",
+    "chakrounanas.turbo-console-log",
+    "pkief.material-icon-theme",
+    "aaron-bond.better-comments"
   ]
 }
