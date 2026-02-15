@@ -1,11 +1,17 @@
-import './App.css';
+import { RouterProvider } from 'react-router-dom';
+import { createRouter } from './router';
+import { useAuth } from './hooks/useAuth';
 
 function App() {
-  return (
-    <>
-      <p className="read-the-docs">Click on the Vite and React logos to learn more</p>
-    </>
-  );
+  const { token } = useAuth();
+
+  if (!token) {
+    return <div>Please login</div>;
+  }
+
+  const router = createRouter(token);
+
+  return <RouterProvider router={router} />;
 }
 
 export default App;

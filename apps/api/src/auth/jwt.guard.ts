@@ -24,13 +24,16 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) return true;
 
     const request = context.switchToHttp().getRequest();
+
     const authHeader = request.headers.authorization;
 
-    if (!authHeader?.startsWith('Bearer ')) {
-      throw new UnauthorizedException('Missing token');
-    }
+    const token =
+      request.cookies?.access_token ||
+      (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : null);
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+      throw new UnauthorizedException('Missing authentication token');
+    }
 
     try {
       const payload = this.jwtService.verify(token);

@@ -26,15 +26,22 @@ export class TransferGateway implements OnGatewayConnection {
 
   async handleConnection(client: Socket) {
     try {
-      const token = client.handshake.auth?.token;
+      const cookie = client.handshake.headers.cookie;
 
-      if (!token) {
+      if (!cookie) {
         client.disconnect();
         return;
       }
 
-      const payload = this.jwtService.verify(token);
+      const match = cookie.match(/access_token=([^;]+)/);
+      if (!match) {
+        client.disconnect();
+        return;
+      }
 
+      const token = match[1];
+
+      const payload = this.jwtService.verify(token);
       client.data.userId = payload.sub;
     } catch {
       client.disconnect();

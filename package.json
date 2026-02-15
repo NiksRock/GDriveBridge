@@ -32,9 +32,6 @@
     "turbo": "^2.0.0",
     "typescript": "^5.5.0"
   },
-  "dependencies": {
-    "googleapis": "^171.4.0"
-  },
   "pnpm": {
     "overrides": {
       "ioredis": "5.9.3"
