@@ -1,38 +1,58 @@
-version: '3.9'
-
 services:
   redis:
-    image: redis:7
+    image: redis:7-alpine
     container_name: gdrivebridge-redis
     ports:
       - '6379:6379'
+    networks:
+      - bridge_net
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
   postgres:
-    image: postgres:15
+    image: postgres:15-alpine
     container_name: gdrivebridge-postgres
     environment:
-      POSTGRES_USER: gdrivebridge
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: gdrivebridge
-    ports:
-      - '5432:5432'
+      POSTGRES_USER: ${DB_USER:-gdrivebridge}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-password} # Use a .env file!
+      POSTGRES_DB: ${DB_NAME:-gdrivebridge}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    ports:
+      - '5432:5432'
+    networks:
+      - bridge_net
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB']
+      interval: 10s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
 
-  # Optional DB UI (recommended for dev)
   pgadmin:
-    image: dpage/pgadmin4
+    image: dpage/pgadmin4:latest
     container_name: gdrivebridge-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: admin@gdrivebridge.local
-      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@gdrivebridge.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      # This allows pgAdmin to see the 'postgres' service by its DNS name
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
     ports:
       - '5050:80'
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
+    networks:
+      - bridge_net
     restart: unless-stopped
+
+networks:
+  bridge_net:
+    driver: bridge
 
 volumes:
   postgres_data:
