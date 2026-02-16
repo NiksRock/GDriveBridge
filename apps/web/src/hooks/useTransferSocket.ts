@@ -1,4 +1,5 @@
-import type { TransferProgressPayload } from '@shared/transfer';
+import type { TransferProgressPayload } from '@gdrivebridge/shared';
+
 import { useEffect } from 'react';
 import { io, Socket } from 'socket.io-client';
 
