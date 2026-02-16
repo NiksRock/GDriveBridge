@@ -1,6 +1,6 @@
  
 $outputFile = "project_source_dump.txt"
-$excludePattern = "node_modules|.env|dist|.turbo|.vite|.pnpm|prisma[\\/]migrations|.husky[\\/]_|tsconfig.tsbuildinfo|package-lock.json|.png|.jpg|.svg|.ico"
+$excludePattern = "node_modules|README.md|.env|dist|.turbo|.vite|.pnpm|prisma[\\/]migrations|.husky[\\/]_|tsconfig.tsbuildinfo|package-lock.json|.png|.jpg|.svg|.ico"
 
 # Clear the output file if it exists
 New-Item -ItemType File -Path $outputFile -Force | Out-Null

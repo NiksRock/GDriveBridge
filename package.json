@@ -8,10 +8,12 @@
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "format": "prettier --write .",
-    "prepare": "husky",
-    "clean": "powershell -ExecutionPolicy Bypass -File clean.ps1",
+    "prepare": "husky install",
+    "clean": "rimraf node_modules .turbo dist build apps/**/node_modules apps/**/dist packages/**/node_modules packages/**/dist",
     "reset": "pnpm run clean && pnpm install",
-    "lint-staged": "lint-staged"
+    "lint-staged": "lint-staged",
+    "postinstall": "pnpm --filter api exec prisma generate",
+    "prisma:generate": "pnpm --filter api exec prisma generate"
   },
   "packageManager": "pnpm@10.29.3",
   "devDependencies": {
@@ -34,6 +36,8 @@
   },
   "pnpm": {
     "overrides": {
+      "@prisma/client": "6.19.2",
+      "prisma": "6.19.2",
       "ioredis": "5.9.3"
     }
   }
