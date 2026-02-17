@@ -51,3 +51,89 @@ structure.txt
 clean-structure.txt
 project_source_dump.txt
 print-structure.ps1
+########################################
+# Dependencies
+########################################
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+.yarn/
+package-lock.json
+yarn.lock
+
+########################################
+# Build Outputs
+########################################
+dist/
+build/
+coverage/
+.out/
+.next/
+.turbo/
+.cache/
+.output/
+.vercel/
+
+########################################
+# TypeScript
+########################################
+*.tsbuildinfo
+
+########################################
+# Environment Variables
+########################################
+.env
+.env.*
+!.env.example
+
+########################################
+# Logs
+########################################
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+########################################
+# OS Files
+########################################
+.DS_Store
+Thumbs.db
+
+########################################
+# IDE / Editors
+########################################
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+
+########################################
+# Turbo Remote Cache (if local)
+########################################
+.turbo-cache/
+
+########################################
+# Prisma (if added later)
+########################################
+prisma/migrations/*
+!prisma/migrations/.gitkeep
+
+########################################
+# Docker
+########################################
+docker-compose.override.yml
+
+########################################
+# Testing
+########################################
+coverage/
+
+########################################
+# Misc
+########################################
+tmp/
+temp/

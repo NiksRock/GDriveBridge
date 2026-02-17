@@ -1,0 +1,221 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" 
+}
+
+///////////////////////////////////////////////////////////////
+// USERS
+///////////////////////////////////////////////////////////////
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  primarySourceAccountId String?
+  destinationAccountId   String?
+
+  primarySourceAccount GoogleAccount? @relation("PrimarySource", fields: [primarySourceAccountId], references: [id], onDelete: SetNull)
+  destinationAccount   GoogleAccount? @relation("Destination", fields: [destinationAccountId], references: [id], onDelete: SetNull)
+
+  accounts GoogleAccount[]
+  jobs     TransferJob[]
+
+  @@index([primarySourceAccountId])
+  @@index([destinationAccountId])
+  @@index([email])
+}
+
+///////////////////////////////////////////////////////////////
+// GOOGLE ACCOUNTS
+///////////////////////////////////////////////////////////////
+
+model GoogleAccount {
+  id        String   @id @default(uuid())
+  userId    String
+
+  email                 String
+  avatarUrl             String?
+  refreshTokenEncrypted String
+
+  dailyBytesTransferred BigInt   @default(0)
+  lastQuotaReset        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sourceJobs        TransferJob[] @relation("SourceAccount")
+  destinationJobs   TransferJob[] @relation("DestinationAccount")
+  primaryOwner      User[]        @relation("PrimarySource")
+  destinationOwner  User[]        @relation("Destination")
+
+  @@unique([userId, email])
+  @@index([userId])
+}
+
+///////////////////////////////////////////////////////////////
+// TRANSFER JOB
+///////////////////////////////////////////////////////////////
+
+model TransferJob {
+  id        String @id @default(uuid())
+  userId    String
+
+  sourceAccountId      String
+  destinationAccountId String
+
+  destinationFolderId String
+
+  mode   TransferMode
+  status TransferStatus @default(PENDING)
+
+  totalItems       Int    @default(0)
+  completedItems   Int    @default(0)
+  failedItems      Int    @default(0)
+  skippedItems     Int    @default(0)
+
+  totalBytes       BigInt @default(0)
+  transferredBytes BigInt @default(0)
+
+  riskFlags Json?
+  warnings  Json?
+
+  startedAt  DateTime?
+  pausedAt   DateTime?
+  finishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  sourceAccount      GoogleAccount @relation("SourceAccount", fields: [sourceAccountId], references: [id])
+  destinationAccount GoogleAccount @relation("DestinationAccount", fields: [destinationAccountId], references: [id])
+
+  items  TransferItem[]
+  events TransferEvent[]
+  logs   TransferLog[]
+
+  @@index([status])
+  @@index([userId])
+  @@index([sourceAccountId])
+  @@index([destinationAccountId])
+  @@index([createdAt])
+}
+
+///////////////////////////////////////////////////////////////
+// TRANSFER ITEMS
+///////////////////////////////////////////////////////////////
+
+model TransferItem {
+  id    String @id @default(uuid())
+  jobId String
+
+  sourceFileId      String
+  sourceParentId    String?
+  destinationFileId String?
+
+  fileName  String
+  mimeType  String?
+  sizeBytes BigInt?
+
+  checksum String?
+  depth    Int @default(0)
+
+  status       ItemStatus @default(PENDING)
+  retryCount   Int        @default(0)
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, sourceFileId])
+
+  @@index([jobId])
+  @@index([status])
+  @@index([sourceFileId])
+  @@index([destinationFileId])
+  @@index([createdAt])
+}
+
+///////////////////////////////////////////////////////////////
+// TRANSFER EVENTS
+///////////////////////////////////////////////////////////////
+
+model TransferEvent {
+  id    String @id @default(uuid())
+  jobId String
+
+  type     String
+  message  String?
+  metadata Json?
+
+  createdAt DateTime @default(now())
+
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([type])
+}
+
+///////////////////////////////////////////////////////////////
+// TRANSFER LOGS
+///////////////////////////////////////////////////////////////
+
+model TransferLog {
+  id    String @id @default(uuid())
+  jobId String
+
+  level   LogLevel
+  action  String
+  context Json?
+
+  createdAt DateTime @default(now())
+
+  job TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId])
+  @@index([level])
+}
+
+///////////////////////////////////////////////////////////////
+// ENUMS
+///////////////////////////////////////////////////////////////
+
+enum TransferMode {
+  COPY
+  MOVE
+}
+
+enum TransferStatus {
+  PENDING
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+  AUTO_PAUSED_QUOTA
+}
+
+enum ItemStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  SKIPPED
+  VERIFYING
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
+}
